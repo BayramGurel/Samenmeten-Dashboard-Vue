@@ -1,109 +1,123 @@
 <template>
-  <div
-      ref="toastElementRef"
-      class="toast align-items-center text-bg-primary border-0"
-      role="alert"
-      aria-live="assertive"
-      aria-atomic="true"
-  >
-    <div class="d-flex">
-      <div class="toast-body">
-        <i class="bi bi-patch-check-fill me-2"></i> {{ props.message }}
-        <small v-if="props.timeString" class="d-block mt-1">{{ props.timeString }}</small>
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+    <div
+        ref="toastRef"
+        class="toast align-items-center border-0"
+        :class="toastClass"
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+    >
+      <div class="d-flex">
+        <div class="toast-body">
+          <i :class="iconClass" class="me-2"></i>
+          {{ message }}
+          <small v-if="timeString" class="d-block mt-1">{{ timeString }}</small>
+        </div>
+        <button
+            type="button"
+            class="btn-close btn-close-white me-2 m-auto"
+            @click="hideToastManually"
+            aria-label="Close"
+        ></button>
       </div>
-      <button
-          type="button"
-          class="btn-close btn-close-white me-2 m-auto"
-          aria-label="Close"
-          @click="closeToast"
-      ></button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
-// Import Bootstrap's Toast component logic
-import { Toast } from 'bootstrap';
+import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
 
 const props = defineProps({
-  show: { // Controls visibility from parent
+  show: {
     type: Boolean,
-    required: true,
+    required: true
   },
-  message: { // The main message to display
+  message: {
     type: String,
-    default: 'Notification',
+    default: 'Notification.'
   },
-  timeString: { // Optional timestamp string
+  timeString: {
     type: String,
-    default: '',
+    default: ''
+  },
+  type: {
+    type: String,
+    default: 'primary',
+    validator: (value) => ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark'].includes(value)
+  },
+  delay: {
+    type: Number,
+    default: 5000
   }
 });
 
-const emit = defineEmits([
-  'close-toast', // Emitted when the toast should be hidden (user click or internal event)
-]);
+const emit = defineEmits(['close-toast']);
 
-const toastElementRef = ref(null); // Template ref for the toast DOM element
-const toastInstanceRef = ref(null); // Ref to hold the Bootstrap Toast instance
+const toastRef = ref(null);
+const toastInstance = ref(null);
 
-// Function to emit close event
-const closeToast = () => {
-  emit('close-toast');
-};
-
-// Initialize and manage the Bootstrap Toast instance
 onMounted(() => {
-  if (toastElementRef.value) {
-    // Create a new Bootstrap Toast instance
-    toastInstanceRef.value = new Toast(toastElementRef.value, {
-      autohide: false // Control visibility strictly via the 'show' prop
+  if (toastRef.value && window.bootstrap?.Toast) {
+    toastInstance.value = new window.bootstrap.Toast(toastRef.value, {
+      delay: props.delay,
+      autohide: true
     });
 
-    // Listen for the Bootstrap event when the toast is hidden
-    // This handles cases where it might be closed by means other than the prop changing (e.g., future autohide)
-    // or ensures we emit close if Bootstrap hides it internally before prop changes.
-    toastElementRef.value.addEventListener('hidden.bs.toast', () => {
-      // Check if it was supposed to be shown - prevents emitting close if it was hidden via prop already
-      if(props.show) {
+    toastRef.value.addEventListener('hidden.bs.toast', () => {
+      if (props.show) {
         emit('close-toast');
       }
     });
 
-    // Show the toast initially if the prop is true when mounted
     if (props.show) {
-      toastInstanceRef.value.show();
+      toastInstance.value?.show();
+    }
+
+  } else {
+    console.warn('Bootstrap Toast JS not found or toastRef not available.');
+  }
+});
+
+onBeforeUnmount(() => {
+  toastInstance.value?.dispose();
+});
+
+watch(() => props.show, (newValue, oldValue) => {
+  if (newValue) {
+    toastInstance.value?.show();
+  } else {
+    if (toastInstance.value && toastRef.value && !toastRef.value.classList.contains('hiding') && toastRef.value.classList.contains('show')) {
+      toastInstance.value?.hide();
     }
   }
 });
 
-// Clean up the Bootstrap Toast instance when the component unmounts
-onBeforeUnmount(() => {
-  toastInstanceRef.value?.dispose(); // Use optional chaining safely
-});
+function hideToastManually() {
+  toastInstance.value?.hide();
+}
 
-// Watch the 'show' prop to programmatically show/hide the toast
-watch(() => props.show, (newValue) => {
-  if (toastInstanceRef.value) {
-    if (newValue) {
-      toastInstanceRef.value.show();
-    } else {
-      toastInstanceRef.value.hide();
-    }
+const toastClass = computed(() => ({
+  [`text-bg-${props.type}`]: true
+}));
+
+const iconClass = computed(() => {
+  switch (props.type) {
+    case 'success': return 'bi bi-check-circle-fill';
+    case 'danger': return 'bi bi-exclamation-triangle-fill';
+    case 'warning': return 'bi bi-exclamation-triangle-fill';
+    case 'info': return 'bi bi-info-circle-fill';
+    default: return 'bi bi-bell-fill'; // Or use 'bi bi-patch-check-fill' for original icon
   }
 });
 
 </script>
 
 <style scoped>
-/* Add any specific scoped styles for the toast if needed */
-.toast {
-  /* Ensure it appears above other elements as needed */
-  /* z-index is often handled by the positioning classes from the parent */
-  min-width: 250px; /* Example: Ensure minimum width */
+.toast-container {
+  z-index: 1100;
 }
-.toast-body small {
-  opacity: 0.8;
+.toast-body {
+  color: inherit;
 }
 </style>

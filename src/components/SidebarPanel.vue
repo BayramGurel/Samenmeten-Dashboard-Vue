@@ -1,307 +1,248 @@
 <template>
   <div>
     <button
-        class="btn btn-light position-fixed top-50 end-0 translate-middle-y shadow-sm sidebar-toggle-btn"
+        class="btn btn-light position-fixed top-50 end-0 translate-middle-y shadow-sm"
         type="button"
         data-bs-toggle="offcanvas"
-        data-bs-target="#infoSidebar"
-        aria-controls="infoSidebar"
+        data-bs-target="#sidebarInfoPanel"
+        aria-controls="sidebarInfoPanel"
         data-bs-backdrop="false"
         style="z-index: 1040;"
-        title="Toon/Verberg aanvullende informatie"
     >
-      <i class="bi bi-list me-1"></i> Info
+      <i class="bi bi-list me-1"></i> Aanvullende Informatie
     </button>
 
     <div
-        id="infoSidebar"
-        ref="sidebarElement"
-        class="offcanvas offcanvas-end rounded shadow"
+        class="offcanvas offcanvas-end rounded"
         tabindex="-1"
-        aria-labelledby="infoSidebarLabel"
-        style="width: 50%; top: 1%; bottom: 1%;"
+        id="sidebarInfoPanel"
+        aria-labelledby="sidebarInfoPanelLabel"
+        style="width: 45%; top: 1%; bottom: 1%; max-width: 600px;"
     >
       <div class="offcanvas-header border-bottom">
-        <h4 id="infoSidebarLabel" class="offcanvas-title">
-          Informatie over de stations
-        </h4>
-        <button
-            type="button"
-            class="btn-close text-reset"
-            data-bs-dismiss="offcanvas"
-            aria-label="Close"
-        ></button>
+        <h5 class="offcanvas-title text-primary-emphasis" id="sidebarInfoPanelLabel">Stationsinformatie & Details</h5>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
       </div>
 
       <div class="offcanvas-body overflow-hidden position-relative p-0">
-        <div
-            id="sidebarCarousel"
-            class="carousel slide position-absolute top-0 start-0 w-100 h-100"
-            data-bs-ride="carousel"
-            data-bs-interval="5000"
-        >
+        <div id="sidebarCarousel" class="carousel slide position-absolute top-0 start-0 w-100 h-100" data-bs-ride="carousel">
           <div class="carousel-inner h-100">
             <div class="carousel-item active h-100">
-              <img
-                  :src="require('@/assets/car2.png')"
-                  class="d-block w-100 h-100 object-fit-cover carousel-img-overlay"
-                  alt="Achtergrond afbeelding 1"
-              />
+              <img :src="car2" class="d-block w-100 h-100 object-fit-cover" alt="Background Image 2">
             </div>
             <div class="carousel-item h-100">
-              <img
-                  :src="require('@/assets/car3.png')"
-                  class="d-block w-100 h-100 object-fit-cover carousel-img-overlay"
-                  alt="Achtergrond afbeelding 2"
-              />
+              <img :src="car3" class="d-block w-100 h-100 object-fit-cover" alt="Background Image 3">
             </div>
             <div class="carousel-item h-100">
-              <img
-                  :src="require('@/assets/car1.png')"
-                  class="d-block w-100 h-100 object-fit-cover carousel-img-overlay"
-                  alt="Achtergrond afbeelding 3"
-              />
+              <img :src="car1" class="d-block w-100 h-100 object-fit-cover" alt="Background Image 1">
             </div>
           </div>
         </div>
 
-        <div class="container-fluid position-relative sidebar-content p-3 h-100 overflow-auto">
+        <div class="container-fluid position-relative h-100 overflow-auto p-3" style="background-color: rgba(255, 255, 255, 0.85); backdrop-filter: blur(2px);">
           <div class="row">
-            <div id="sidebarAccordion" class="accordion">
+            <div class="accordion" id="sidebarAccordion">
 
-              <div class="accordion-item bg-light bg-opacity-75 mb-2">
-                <h2 id="headingOne" class="accordion-header">
-                  <button
-                      class="accordion-button text-primary-emphasis fw-semibold shadow-sm"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#collapseOne"
-                      aria-expanded="true"
-                      aria-controls="collapseOne"
-                  >
-                    <p class="mb-0 small">
-                      Samenvatting:
-                      <b class="text-primary fw-semibold">{{ formattedProperty }} (µg/m³)</b> Vandaag
-                    </p>
+              <div class="accordion-item bg-transparent border-secondary mb-2">
+                <h2 class="accordion-header" id="headingTabel">
+                  <button class="accordion-button text-primary-emphasis fw-semibold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTabel" aria-expanded="true" aria-controls="collapseTabel">
+                    Samenvatting <b class="text-primary ms-1">{{ formattedProperty }}</b> (Dag Gem/Max/Min, µg/m³)
                   </button>
                 </h2>
-                <div
-                    id="collapseOne"
-                    class="accordion-collapse collapse show"
-                    aria-labelledby="headingOne"
-                    data-bs-parent="#sidebarAccordion"
-                >
-                  <div class="accordion-body p-2">
-                    <div v-if="stationFeatures && stationFeatures.length > 0" class="table-responsive data-table-container">
-                      <table class="table table-hover table-bordered table-sm caption-top small">
-                        <caption>Overzicht van {{ stationFeatures.length }} station(s)</caption>
+                <div id="collapseTabel" class="accordion-collapse collapse show" aria-labelledby="headingTabel" data-bs-parent="#sidebarAccordion">
+                  <div class="accordion-body p-0">
+                    <div class="table-responsive data-table-container">
+                      <table v-if="hasTableData" class="table table-sm table-hover table-bordered caption-top small bg-light">
+                        <caption>Stations in huidige selectie</caption>
                         <thead class="table-light">
                         <tr>
                           <th scope="col">Station</th>
-                          <th scope="col" class="text-end">Gem.</th>
-                          <th scope="col" class="text-end">Max.</th>
-                          <th scope="col" class="text-end">Min.</th>
+                          <th scope="col">Gem.</th>
+                          <th scope="col">Max.</th>
+                          <th scope="col">Min.</th>
                         </tr>
                         </thead>
                         <tbody class="table-group-divider">
-                        <tr v-for="(item, index) in stationFeatures" :key="item.properties?.station_name || `station-${index}`">
+                        <tr v-for="item in tableData" :key="item.properties?.station_name || item.id">
                           <th scope="row">{{ item.properties?.station_name || 'N/A' }}</th>
-                          <td class="text-end">{{ formatValue(item.properties?.avg_value) }}</td>
-                          <td class="text-end">{{ formatValue(item.properties?.max_value) }}</td>
-                          <td class="text-end">{{ formatValue(item.properties?.min_value) }}</td>
+                          <td>{{ formatValue(item.properties?.avg_value) }}</td>
+                          <td>{{ formatValue(item.properties?.max_value) }}</td>
+                          <td>{{ formatValue(item.properties?.min_value) }}</td>
                         </tr>
                         </tbody>
                       </table>
-                    </div>
-                    <div v-else class="text-center text-muted p-3 small">
-                      Geen station gegevens beschikbaar voor de huidige selectie.
+                      <p v-else class="text-center text-muted p-3 small">Geen stationsdata beschikbaar voor de huidige selectie en tijd.</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="accordion-item bg-light bg-opacity-75 mb-2">
-                <h2 id="headingTwo" class="accordion-header">
-                  <button
-                      class="accordion-button text-primary-emphasis fw-semibold collapsed shadow-sm"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#collapseTwo"
-                      aria-expanded="false"
-                      aria-controls="collapseTwo"
-                  >
-                    <p class="mb-0 small">
-                      Beschrijving | <span class="property text-primary">{{ formattedProperty }}</span>
-                    </p>
+              <div class="accordion-item bg-transparent border-secondary mb-2">
+                <h2 class="accordion-header" id="headingBeschrijving">
+                  <button class="accordion-button text-primary-emphasis fw-semibold collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBeschrijving" aria-expanded="false" aria-controls="collapseBeschrijving">
+                    Beschrijving <span class="text-primary ms-1">{{ formattedProperty }}</span>
                   </button>
                 </h2>
-                <div
-                    id="collapseTwo"
-                    class="accordion-collapse collapse"
-                    aria-labelledby="headingTwo"
-                    data-bs-parent="#sidebarAccordion"
-                >
-                  <div class="accordion-body description-container small">
-                    <div v-if="description" v-html="description"></div>
-                    <div v-else class="text-muted">Geen beschrijving beschikbaar.</div>
+                <div id="collapseBeschrijving" class="accordion-collapse collapse" aria-labelledby="headingBeschrijving" data-bs-parent="#sidebarAccordion">
+                  <div class="accordion-body p-2">
+                    <div class="description-container small bg-light p-2 rounded" v-html="description"></div>
                   </div>
                 </div>
               </div>
 
-              <div class="accordion-item bg-light bg-opacity-75">
-                <h2 id="headingThree" class="accordion-header">
-                  <button
-                      class="accordion-button text-primary-emphasis fw-semibold collapsed shadow-sm"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#collapseThree"
-                      aria-expanded="false"
-                      aria-controls="collapseThree"
-                  >
-                    <p class="mb-0 small">Meer informatie (video & links)</p>
+              <div class="accordion-item bg-transparent border-secondary">
+                <h2 class="accordion-header" id="headingVideo">
+                  <button class="accordion-button text-primary-emphasis fw-semibold collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseVideo" aria-expanded="false" aria-controls="collapseVideo">
+                    Meer Informatie & Video
                   </button>
                 </h2>
-                <div
-                    id="collapseThree"
-                    class="accordion-collapse collapse"
-                    aria-labelledby="headingThree"
-                    data-bs-parent="#sidebarAccordion"
-                >
-                  <div class="accordion-body small">
-                    <h6 class="mb-2">
-                      <a
-                          href="https://samenmeten.rivm.nl/dataportaal/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover"
-                      >
-                        RIVM Dataportaal <i class="bi bi-box-arrow-up-right small"></i>
-                      </a>
-                    </h6>
-                    <h6 class="mb-3">
-                      <a
-                          href="https://www.samenmeten.nl/zelf-meten/hoe-kan-ik-zelf-luchtkwaliteit-meten"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover"
-                      >
-                        Zelf luchtkwaliteit meten? <i class="bi bi-question-lg"></i><i class="bi bi-box-arrow-up-right small"></i>
-                      </a>
-                    </h6>
-                    <div class="embed-responsive embed-responsive-16by9 video-container">
-                      <video controls preload="metadata" class="embed-responsive-item w-100 rounded shadow-sm">
-                        <source
-                            src="https://www.rovid.nl/rivm/aco/2017/rivm-aco-20171017-id2nv5d79-web-hd.mp4"
-                            type="video/mp4"
-                        />
-                        Uw browser ondersteunt de video tag niet.
-                      </video>
+                <div id="collapseVideo" class="accordion-collapse collapse" aria-labelledby="headingVideo" data-bs-parent="#sidebarAccordion">
+                  <div class="accordion-body p-2">
+                    <div class="bg-light p-2 rounded">
+                      <h6 class="small"><a href="https://samenmeten.rivm.nl/dataportaal/" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">RIVM Samenmeten Dataportaal</a></h6>
+                      <h6 class="small"><a href="https://www.samenmeten.nl/zelf-meten/hoe-kan-ik-zelf-luchtkwaliteit-meten" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">Hoe kan ik zelf luchtkwaliteit meten? <i class="bi bi-box-arrow-up-right small"></i></a></h6>
+                      <div class="ratio ratio-16x9 mt-2">
+                        <video controls class="rounded" preload="metadata">
+                          <source src="https://www.rovid.nl/rivm/aco/2017/rivm-aco-20171017-id2nv5d79-web-hd.mp4" type="video/mp4">
+                          Uw browser ondersteunt geen HTML5 video.
+                        </video>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div> </div> </div> </div> </div> </div> </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
-// Note: Assumes Bootstrap's JS for Offcanvas, Carousel, Accordion, Collapse
-// is loaded globally or initialized correctly within your Vue application setup.
+import { defineProps, computed } from 'vue';
+
+import car1 from '@/assets/car1.png';
+import car2 from '@/assets/car2.png';
+import car3 from '@/assets/car3.png';
 
 const props = defineProps({
   geojson: {
     type: Object,
-    default: () => ({ type: 'FeatureCollection', features: [] }),
-    // Optional validator for geojson structure
-    validator: (value) => {
-      return value && typeof value === 'object' && value.type === 'FeatureCollection' && Array.isArray(value.features || value.Features);
-    }
+    required: true,
+    default: () => ({ type: 'FeatureCollection', features: [] })
   },
-  formattedProperty: { type: String, default: 'N/A' },
-  description: { type: String, default: '' }, // Caution: Used with v-html
+  formattedProperty: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String,
+    required: true
+  }
 });
 
-// Template ref for the sidebar element (optional usage)
-const sidebarElement = ref(null);
-
-// Computed property to safely access the features array
-const stationFeatures = computed(() => {
-  // Handles both 'features' and 'Features', returns empty array if invalid
-  return props.geojson?.features || props.geojson?.Features || [];
+const hasTableData = computed(() => {
+  return props.geojson && props.geojson.features && props.geojson.features.length > 0;
 });
 
-// Helper function to format numerical values for the table
+const tableData = computed(() => {
+  if (!hasTableData.value) {
+    return [];
+  }
+  return [...props.geojson.features].sort((a, b) => {
+    const nameA = a.properties?.station_name || '';
+    const nameB = b.properties?.station_name || '';
+    return nameA.localeCompare(nameB);
+  });
+});
+
 const formatValue = (value) => {
-  // Check for null, undefined, or NaN
-  if (value == null || isNaN(value)) return 'N/A';
-  // Convert to number and format to 2 decimal places
-  return Number(value).toFixed(2);
+  if (value === null || value === undefined) {
+    return 'N/A';
+  }
+  return typeof value === 'number' ? value.toFixed(1) : value;
 };
+
 </script>
 
 <style scoped>
-.sidebar-toggle-btn {
-  /* Adjust position/style if needed */
-  z-index: 1041; /* Ensure button is above offcanvas when closed */
+.offcanvas {
+  z-index: 1045;
+  border-left: 1px solid #dee2e6;
+  box-shadow: -0.25rem 0 1rem rgba(0, 0, 0, 0.15);
 }
 
-.offcanvas-body {
-  /* Prevent scrollbars on the body itself, content div will handle scroll */
-  overflow: hidden;
-}
-
-.carousel-img-overlay {
-  /* Add filter for better text readability over images */
-  filter: brightness(0.6) blur(1px);
-  /* Ensure it covers the area */
+.object-fit-cover {
   object-fit: cover;
 }
 
-.sidebar-content {
-  /* Ensure content is above the carousel */
-  z-index: 1;
-  /* Add a semi-transparent background to make text readable over the carousel */
-  /* background-color: rgba(255, 255, 255, 0.85); /* Example: White with 85% opacity */
-  /* Alternatively, style text color directly */
-  /* color: #fff; */
+.carousel-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.15);
+}
 
-  /* Make this div scrollable instead of the offcanvas body */
+.data-table-container {
+  max-height: 30vh;
   overflow-y: auto;
-  height: 100%; /* Needs height to enable overflow */
+}
+.description-container {
+  max-height: 35vh;
+  overflow-y: auto;
+  background-color: rgba(255, 255, 255, 0.95);
 }
 
-.accordion-item {
-  /* Example: Add slight transparency to accordion items */
-  background-color: rgba(248, 249, 250, 0.9); /* Light background with opacity */
-  border: none;
-  border-radius: 0.25rem;
-  margin-bottom: 0.5rem;
+.data-table-container::-webkit-scrollbar,
+.description-container::-webkit-scrollbar,
+.container-fluid.position-relative.h-100.overflow-auto::-webkit-scrollbar {
+  width: 6px;
 }
+.data-table-container::-webkit-scrollbar-track,
+.description-container::-webkit-scrollbar-track,
+.container-fluid.position-relative.h-100.overflow-auto::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+.data-table-container::-webkit-scrollbar-thumb,
+.description-container::-webkit-scrollbar-thumb,
+.container-fluid.position-relative.h-100.overflow-auto::-webkit-scrollbar-thumb {
+  background: #aaa;
+  border-radius: 3px;
+}
+.data-table-container::-webkit-scrollbar-thumb:hover,
+.description-container::-webkit-scrollbar-thumb:hover,
+.container-fluid.position-relative.h-100.overflow-auto::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
 .accordion-button {
-  background-color: rgba(233, 236, 239, 0.9); /* Slightly darker button background */
-  border-radius: calc(0.25rem - 1px);
+  background-color: rgba(248, 249, 250, 0.8);
 }
 .accordion-button:not(.collapsed) {
-  background-color: rgba(206, 212, 218, 0.9);
-}
-.accordion-body {
-  background-color: rgba(255, 255, 255, 0.85); /* Lighter body background */
-  border-radius: 0 0 calc(0.25rem - 1px) calc(0.25rem - 1px);
+  background-color: rgba(230, 242, 255, 0.9);
+  color: #0c63e4;
 }
 
-
-/* Limit height of scrollable areas within accordion */
-.data-table-container {
-  max-height: 30vh; /* Adjust as needed */
-  overflow-y: auto;
+.accordion-item.bg-transparent {
+  border: none;
+}
+.accordion-item.bg-transparent .accordion-header {
+  border: 1px solid rgba(0,0,0,.125);
+  border-radius: var(--bs-accordion-border-radius);
+}
+.accordion-item.bg-transparent .accordion-collapse {
+  border: 1px solid rgba(0,0,0,.125);
+  border-top: none;
+  border-radius: 0 0 var(--bs-accordion-border-radius) var(--bs-accordion-border-radius);
+}
+.accordion-button:focus {
+  box-shadow: none;
 }
 
-.description-container {
-  max-height: 35vh; /* Adjust as needed */
-  overflow-y: auto;
-}
-
-.video-container video {
-  max-width: 100%;
-  height: auto;
-}
 </style>
