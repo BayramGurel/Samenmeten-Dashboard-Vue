@@ -1,741 +1,302 @@
 <template>
-  <div id="app-container" class="position-relative w-100 h-100">
-    <MapDisplay
-        :geojson="geojsonForMap"
-        :map-style-url="currentMapStyleUrl"
-        :bbox="bbox"
-        :interpolation-params="interpolationParams"
-        :property="selectedProperty"
-        @map-loaded="handleMapReady"
-        @station-clicked="handleStationClickFromMap"
-        @style-changed="handleMapStyleChange"
-        @interpolation-layer-updated="handleInterpolationLayerUpdate"
-        @request-map-instance="provideMapInstance"
-        class="position-absolute w-100 h-100"
-    />
+  <div id="map-container" class="position-relative w-100 h-100">
+    <div id="map" class="position-absolute w-100 h-100"></div>
 
-    <div class="container-fluid position-absolute start-0 mt-3 ms-3 col-md-4 col-8 custom-div" id="czoom" style="z-index: 1; max-height: 97vh; overflow-y: auto;">
-      <ControlPanel
-          :day-names="dayNames"
-          :selected-day="selectedDay"
-          :time-value="timeValue"
-          :is-playing="isPlaying"
-          :selected-property="selectedProperty"
-          :formatted-property="formattedProperty"
-          :legenda-values="legendaValues"
-          :concentration-values="concentrationValues"
-          :colors="colors"
-          :is-from="isFrom"
-          :filter-options="filterOptions"
-          :is-local-file="isLocalFile"
-          :file-name="fileName"
-          :interpolation-status="interpolationStatus"
-          :is-loading="isLoading"
-          @property-change="handlePropertyChange"
-          @time-change="handleTimeChange"
-          @date-change="handleDateChange"
-          @play-toggle="handlePlayToggle"
-          @advanced-filter-change="handleFilterChange"
-          @station-search-select="handleStationSearchSelect"
-          @interpolation-change="handleInterpolationChange"
-          @download-request="handleDownloadRequest"
-          @file-upload="handleFileUpload"
-          @clear-local-file="handleClearLocalFile"
-          @refresh-page="reloadPage"
+    <div class="offcanvas offcanvas-end rounded" tabindex="-1" id="sidebar" style="width: 50%; top: 1%; bottom: 1%;" data-bs-scroll="true" data-bs-backdrop="false">
+      <div class="offcanvas-header">
+        <h3 class="offcanvas-title">Informatie over de stations</h3>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+      </div>
+      <SidebarContent
+          :geojson="geojson"
+          :formattedProperty="formattedProperty"
+          :description="description"
       />
     </div>
+    <button class="btn btn-light position-fixed top-50 end-0 translate-middle-y" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" style="z-index: 2;">
+      <i class="bi bi-list"></i> Aanvullende informatie
+    </button>
 
-    <SidebarPanel
-        :geojson="geojson"
-        :formatted-property="formattedProperty"
-        :description="description"
-    />
-
-    <StationDetailModal
-        :show-modal="showStationModal"
-        :station-properties="selectedStationPropertiesForModal"
-        :get-color-utility="getColor"
-        @close-modal="handleCloseModal"
-        @request-chart-data="handleChartDataRequest"
-        ref="stationModalRef"
-    />
-
-    <NotificationToast
-        :show="toastShow"
-        :message="toastMessage"
-        :time-string="toastTimeString"
-        type="primary"
-        @close-toast="toastShow = false"
-    />
-
-    <div v-if="isLoading" class="loading-overlay">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
+    <div class="container-fluid" id="czoom">
+      <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
+        <ControlPanel
+            :property="property"
+            :timeValue="timeValue"
+            :selectedDay="selectedDay"
+            :dayNames="dayNames"
+            :isPlaying="isPlaying"
+            :formattedProperty="formattedProperty"
+            :legendaValues="legendaValues"
+            :colors="colors"
+            :concentrationValues="concentrationValues"
+            :isFrom="isFrom"
+            :regio="regio"
+            :Gemeente="Gemeente"
+            :station_name="station_name"
+            :search="search"
+            :isLocalFile="isLocalFile"
+            :fileName="fileName"
+            :interpolationStatus="interpolationStatus"
+            :propValues="propValues"
+            :days="days"
+            @update:property="handlePropertyUpdate"
+            @update:timeValue="handleTimeValueUpdate"
+            @update:selectedDay="handleSelectedDayUpdate"
+            @update:search="handleSearchUpdate"
+            @update:interpolationStatus="handleInterpolationStatusUpdate"
+            @togglePlay="handleTogglePlay"
+            @stopSlider="handleStopSlider"
+            @clearDayInput="handleClearDayInput"
+            @updateFilter="handleFilterUpdate"
+            @selectMatchingStations="handleSelectMatchingStations"
+            @downloadGeoJSON="downloadGeoJSON"
+            @downloadCSV="downloadCSV"
+            @clearLocalFile="handleClearLocalFile"
+            @fileUploaded="handleFileUploaded"
+            @reloadPage="handleReloadPage"
+        />
       </div>
-      <p class="mt-2 text-primary fw-semibold">Loading data...</p>
     </div>
 
+    <div class="modal fade content-none" id="modalWithBothOptions" tabindex="-1" aria-labelledby="modalWithBothOptionsLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl" id="czoom2">
+        <StationDetailModal
+            :properties="modalProperties"
+            :formattedProperty="formattedProperty"
+            :rawObservationData="modalRawObservationData"
+            :getColor="getColor"
+            :dayColors="dayColors"
+            :chartOptionsFromParent="chartOptions"
+        />
+      </div>
+    </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3 content-none" style="z-index: 9999;">
+      <NotificationToast
+          :show="showToast"
+          :timeString="toastTimeString"
+          @hidden="showToast = false"
+      />
+    </div>
   </div>
 </template>
 
-<script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, provide, nextTick } from 'vue';
-import * as maplibregl from 'maplibre-gl';
+<script>
+// Original Imports
+import { data } from '@/data/variable.js';
 
-import MapDisplay from './MapDisplay.vue';
+// Child Component Imports
+import SidebarContent from './SidebarContent.vue';
 import ControlPanel from './ControlPanel.vue';
-import SidebarPanel from './SidebarPanel.vue';
 import StationDetailModal from './StationDetailModal.vue';
 import NotificationToast from './NotificationToast.vue';
 
-const API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || 'YOUR_MAPTILER_API_KEY';
-const STYLE_URLS = [
-  `https://api.maptiler.com/maps/dataviz/style.json?key=`,
-  `https://api.maptiler.com/maps/streets-v2/style.json?key=`,
-  `https://api.maptiler.com/maps/hybrid/style.json?key=`,
-  `https://api.maptiler.com/maps/basic-v2/style.json?key=`,
-  `https://api.maptiler.com/maps/satellite/style.json?key=`,
-];
-const STYLE_NAMES = ['DataViz', 'Streets', 'Hybrid', 'Basic', 'Satellite'];
-const DEFAULT_STYLE_INDEX = 0;
-const BASE_API_URL = 'https://dta-samenmeten-api.azurewebsites.net/api/data';
+// Assume maplibregl, Chart are global
 
-const propValues = {
-  no2: { property: 'no2', description: '<b>Stikstofdioxide (NO₂)</b> is een gas dat voornamelijk vrijkomt bij verbrandingsprocessen, zoals in het verkeer en de industrie. Het kan leiden tot luchtwegproblemen en draagt bij aan de vorming van zure regen en smog.', legendaValues: ['0-13.3', '13.3-26.6', '26.6-40', '>40'], concentrationValues: ['0', '>40'] },
-  pm10: { property: 'pm10', description: '<b>Fijnstof (PM10)</b> zijn deeltjes in de lucht kleiner dan 10 micrometer. Deze deeltjes kunnen afkomstig zijn van verkeer, industrie, landbouw en natuurlijke bronnen. Inademing kan schadelijk zijn voor de gezondheid, met name voor de luchtwegen en het hart- en vaatstelsel.', legendaValues: ['0-13.3', '13.3-26.6', '26.6-40', '>40'], concentrationValues: ['0', '>40'] },
-  pm25: { property: 'pm25', description: '<b>Fijnstof (PM2.5)</b> zijn zeer kleine deeltjes in de lucht, kleiner dan 2.5 micrometer. Vanwege hun kleine formaat kunnen ze diep in de longen doordringen en gezondheidsproblemen veroorzaken, zoals ademhalingsproblemen en hart- en vaatziekten. Bronnen zijn vergelijkbaar met PM10, maar omvatten ook verbrandingsprocessen zoals houtstook.', legendaValues: ['0-8.3', '8.3-16.7', '16.7-25', '>25'], concentrationValues: ['0', '>25'] },
-  default: { property: 'pm25', description: 'Selecteer een component hierboven.', legendaValues: ['0-8.3', '8.3-16.7', '16.7-25', '>25'], concentrationValues: ['0', '>25'] }
-};
-const colors = ['#1E90FF', '#48D1CC', '#9ACD32', '#DAA520'];
-const dayColors = ['rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)', 'rgba(255, 206, 86, 1)', 'rgba(75, 192, 192, 1)', 'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)', 'rgba(128, 128, 128, 1)'];
-const days = ["Zondag", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag"];
-const bbox = [[3.773675345120739, 51.64377788724585], [5.031415001585676, 52.3325109475691]];
-
-const isLoading = ref(true);
-const mapInstance = ref(null);
-const currentMapStyleUrl = ref(`${STYLE_URLS[DEFAULT_STYLE_INDEX]}${API_KEY}`);
-const geojson = ref({ type: 'FeatureCollection', features: [] });
-const geojsonForMap = ref({ type: 'FeatureCollection', features: [] });
-const allStationsGeojson = ref({ type: 'FeatureCollection', features: [] });
-
-const timeValue = ref(new Date().getHours());
-const selectedDay = ref('');
-const selectedProperty = ref('pm25');
-const description = ref(propValues.pm25.description);
-const legendaValues = ref(propValues.pm25.legendaValues);
-const concentrationValues = ref(propValues.pm25.concentrationValues);
-
-const isPlaying = ref(false);
-const sliderInterval = ref(null);
-const hourlyUpdateInterval = ref(null);
-
-const filterOptions = reactive({
-  regio: [],
-  Gemeente: [],
-  station_name: [],
-});
-const selectedFilters = reactive({
-  regio: [],
-  Gemeente: [],
-  station_name: [],
-});
-
-const isLocalFile = ref(false);
-const localFileData = ref(null);
-const fileName = ref('Uploaden | Geojson bestand');
-const isFrom = ref('');
-
-const interpolationStatus = ref('disable');
-const interpolationParams = computed(() => ({
-  status: interpolationStatus.value,
-  property: selectedProperty.value,
-  date: selectedDay.value,
-  time: timeValue.value
-}));
-
-const showStationModal = ref(false);
-const selectedStationPropertiesForModal = ref(null);
-const stationModalRef = ref(null);
-
-const toastShow = ref(false);
-const toastMessage = ref('');
-const toastTimeString = ref('');
-
-const dayNames = computed(() => {
-  return Array.from({ length: 30 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    return formatDate(date);
-  });
-});
-
-const formattedProperty = computed(() => {
-  const propertyMap = { 'pm25': 'PM2,5', 'pm10': 'PM10', 'no2': 'NO₂' };
-  return propertyMap[selectedProperty.value] || selectedProperty.value;
-});
-
-const formatDate = (date) => {
-  const dayName = days[date.getDay()];
-  const dateString = date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-  return `${dayName} | ${dateString}`;
-};
-
-const parseFormattedDate = (formattedDateString) => {
-  if (!formattedDateString || !formattedDateString.includes('|')) return new Date();
-  const parts = formattedDateString.split('|');
-  const datePart = parts[1]?.trim();
-  if (!datePart) return new Date();
-  const monthMap = { januari: 0, februari: 1, maart: 2, april: 3, mei: 4, juni: 5, juli: 6, augustus: 7, september: 8, oktober: 9, november: 10, december: 11 };
-  const dateParts = datePart.split(' ');
-  if (dateParts.length < 3) return new Date();
-  const day = parseInt(dateParts[0], 10);
-  const monthName = dateParts[1].toLowerCase();
-  const year = parseInt(dateParts[2], 10);
-  if (isNaN(day) || isNaN(year) || !(monthName in monthMap)) {
-    console.warn("Could not parse date:", formattedDateString);
-    return new Date();
-  }
-  const month = monthMap[monthName];
-  return new Date(year, month, day);
-};
-
-const fetchData = async (url, options = {}) => {
-  try {
-    const response = await fetch(url, { method: "GET", credentials: "omit", keepalive: true, ...options });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status} fetching ${url}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("Fetch error:", error);
-    showToast(`Error fetching data: ${error.message}`);
-    throw error;
-  }
-};
-
-const getUniqueItems = (geojson, uniqueColumn) => {
-  if (!geojson || !geojson.features || !Array.isArray(geojson.features)) {
-    console.warn("Cannot get unique items from invalid geojson:", geojson);
-    return [];
-  }
-  const uniqueSet = new Set(geojson.features.map(feature => feature.properties?.[uniqueColumn]).filter(Boolean));
-  return [...uniqueSet].sort();
-};
-
-const createOrUpdateCheckboxes = (key, items) => {
-  const currentChecked = new Set(filterOptions[key].filter(cb => cb.checked).map(cb => cb.id));
-  filterOptions[key] = items.map(item => ({
-    id: item,
-    label: item,
-    checked: currentChecked.has(item)
-  }));
-};
-
-const getColor = (value, property, alpha) => {
-  if (value === null || value === undefined) return `rgba(128, 128, 128, ${alpha})`;
-  const valueColor = property === "pm25" ? [8.3, 16.7, 25, Infinity] : [13.3, 26.6, 40, Infinity];
-  const rgbaColors = ['rgba(30, 144, 255,', 'rgba(72, 209, 204,', 'rgba(154, 205, 50,', 'rgba(218, 165, 32,'];
-  const colorIndex = valueColor.findIndex(threshold => value < threshold);
-  const colorBase = rgbaColors[colorIndex] !== undefined ? rgbaColors[colorIndex] : rgbaColors[rgbaColors.length - 1];
-  return `${colorBase}${alpha})`;
-};
-provide('getColor', getColor);
-provide('dayColors', dayColors);
-
-const updateLayer = async (options = {}) => {
-  if (isLoading.value && !options.initialLoad) return;
-  isLoading.value = true;
-  stopSlider();
-
-  try {
-    const prop = propValues[selectedProperty.value] || propValues.default;
-    description.value = prop.description;
-    legendaValues.value = prop.legendaValues;
-    concentrationValues.value = prop.concentrationValues;
-
-    isFrom.value = isLocalFile.value
-        ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold">van jouw Local File</span>'
-        : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata. Bekijk de metadata voor details over de serverdata.</a>';
-
-    await filterGeojsonFeatures();
-
-  } catch (error) {
-    console.error('Error updating layer:', error);
-    showToast("Failed to update map data.");
-    geojson.value = { type: 'FeatureCollection', features: [] };
-    geojsonForMap.value = { type: 'FeatureCollection', features: [] };
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const filterGeojsonFeatures = async () => {
-  const baseDate = parseFormattedDate(selectedDay.value);
-  const currentHour = parseInt(timeValue.value, 10);
-  const localDateAtHour = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), currentHour);
-  const utcDate = new Date(localDateAtHour.getTime() - (localDateAtHour.getTimezoneOffset() * 60000));
-  const measured_time_utc = utcDate.toISOString().replace('T', ' ').substring(0, 19);
-
-  let currentGeojsonData = { type: 'FeatureCollection', features: [] };
-
-  if (isLocalFile.value && localFileData.value) {
-    currentGeojsonData.features = localFileData.value.features.filter(f => {
-      const props = f.properties;
-      const timeMatch = props.measured_time ? props.measured_time.startsWith(measured_time_utc.substring(0, 13)) : true;
-      const propMatch = props.property === selectedProperty.value;
-      return timeMatch && propMatch;
-    });
-    geojson.value = currentGeojsonData;
-
-  } else if (!isLocalFile.value) {
-    const stationFilters = {
-      property: selectedProperty.value,
-      station: selectedFilters.station_name.length > 0 ? selectedFilters.station_name : undefined,
-      gemeente: selectedFilters.station_name.length === 0 && selectedFilters.Gemeente.length > 0 ? selectedFilters.Gemeente : undefined,
-      regio: selectedFilters.station_name.length === 0 && selectedFilters.Gemeente.length === 0 && selectedFilters.regio.length > 0 ? selectedFilters.regio : undefined,
-    };
-    const stationParams = new URLSearchParams();
-    Object.entries(stationFilters).forEach(([key, value]) => {
-      if (value) {
-        if (Array.isArray(value)) value.forEach(v => stationParams.append(key, v));
-        else stationParams.append(key, value);
-      }
-    });
-    const stationUrl = `${BASE_API_URL}/stations?${stationParams.toString()}`;
-    const observationUrl = `${BASE_API_URL}/observations?property=${selectedProperty.value}&measured_time=${encodeURIComponent(measured_time_utc)}`;
-
-    const [stationsData, observationsData] = await Promise.all([
-      fetchData(stationUrl),
-      fetchData(observationUrl)
-    ]);
-
-    const observationMap = new Map();
-    if (observationsData?.features) {
-      observationsData.features.forEach(obs => {
-        const key = obs.properties?.station_name;
-        if (key) {
-          observationMap.set(key, obs.properties);
-        }
-      });
-    }
-
-    currentGeojsonData.features = stationsData?.features?.map(station => {
-      const stationProps = station.properties;
-      const key = stationProps?.station_name;
-      const observationProps = key ? observationMap.get(key) : null;
-      if (observationProps) {
-        return {
-          ...station,
-          properties: { ...stationProps, ...observationProps }
-        };
-      } else {
-        return null;
-      }
-    }).filter(Boolean);
-
-    geojson.value = { ...currentGeojsonData };
-
-  } else {
-    geojson.value = { type: 'FeatureCollection', features: [] };
-  }
-
-  geojsonForMap.value = { ...currentGeojsonData };
-
-  if (!isLocalFile.value && currentGeojsonData?.features) {
-    const uniqueRegios = getUniqueItems(currentGeojsonData, 'regio');
-    const uniqueGemeentes = getUniqueItems(currentGeojsonData, 'Gemeente');
-    const uniqueStations = getUniqueItems(currentGeojsonData, 'station_name');
-    createOrUpdateCheckboxes('regio', uniqueRegios);
-    createOrUpdateCheckboxes('Gemeente', uniqueGemeentes);
-    createOrUpdateCheckboxes('station_name', uniqueStations);
-  }
-};
-
-const showToast = (message) => {
-  toastMessage.value = message;
-  const now = new Date();
-  toastTimeString.value = now.toLocaleTimeString('nl-NL');
-  toastShow.value = true;
-};
-
-const handleMapReady = (map) => {
-  console.log("Map is ready!");
-  updateLayer({ initialLoad: true });
-};
-
-const provideMapInstance = (callback) => {
-  console.warn("provideMapInstance called - direct map access from ControlPanel is discouraged.");
-  if (mapInstance.value && typeof callback === 'function') {
-    callback(mapInstance.value);
-  }
-};
-
-const handlePropertyChange = (newProperty) => {
-  selectedProperty.value = newProperty;
-  updateLayer();
-};
-
-const handleTimeChange = (newTime) => {
-  timeValue.value = parseInt(newTime, 10);
-  stopSlider();
-  updateLayer();
-};
-
-const handleDateChange = (newDate) => {
-  if (dayNames.value.includes(newDate)) {
-    selectedDay.value = newDate;
-    updateLayer();
-  } else if (newDate === '') {
-    selectedDay.value = '';
-    geojson.value = { type: 'FeatureCollection', features: [] };
-    geojsonForMap.value = { type: 'FeatureCollection', features: [] };
-  }
-};
-
-const handlePlayToggle = () => {
-  isPlaying.value = !isPlaying.value;
-  if (isPlaying.value) {
-    startSlider();
-  } else {
-    stopSlider();
-  }
-};
-
-const handleFilterChange = (newFilters) => {
-  selectedFilters.regio = newFilters.regio.filter(cb => cb.checked).map(cb => cb.id);
-  selectedFilters.Gemeente = newFilters.Gemeente.filter(cb => cb.checked).map(cb => cb.id);
-  selectedFilters.station_name = newFilters.station_name.filter(cb => cb.checked).map(cb => cb.id);
-  updateLayer();
-};
-
-const handleStationSearchSelect = (stationLabel) => {
-  let found = false;
-  filterOptions.station_name.forEach(cb => {
-    cb.checked = cb.label === stationLabel;
-    if (cb.checked) found = true;
-  });
-  if (found) {
-    selectedFilters.station_name = [stationLabel];
-    updateLayer();
-  }
-};
-
-const handleInterpolationChange = (newStatus) => {
-  interpolationStatus.value = newStatus;
-  updateLayer();
-};
-
-const handleDownloadRequest = async (format) => {
-  isLoading.value = true;
-  await nextTick();
-
-  const dataToDownload = geojson.value;
-
-  if (!dataToDownload || !dataToDownload.features || dataToDownload.features.length === 0) {
-    showToast("No data available to download.");
-    isLoading.value = false;
-    return;
-  }
-
-  try {
-    if (format === 'geojson') {
-      const dataStr = JSON.stringify(dataToDownload);
-      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-      const link = document.createElement('a');
-      link.href = dataUri;
-      link.download = `PZH-Luchtkwaliteit_${selectedProperty.value}_${selectedDay.value.split('|')[1]?.trim()}_${timeValue.value}h.geojson`.replace(/ /g, '_');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast('GeoJSON bestand gedownload.');
-
-    } else if (format === 'csv') {
-      const CSV_HEADER = 'Station naam;Datum en tijd (UTC);Property;Regio;Gemeente;Value;Unit\n';
-      const DEFAULT_VALUE = 'N/A';
-      let csv = CSV_HEADER;
-      dataToDownload.features.forEach(feature => {
-        let props = feature.properties;
-        let station_name = props?.station_name || DEFAULT_VALUE;
-        let measured_time = props?.measured_time ? new Date(props.measured_time).toISOString() : DEFAULT_VALUE;
-        let property = props?.property || selectedProperty.value || DEFAULT_VALUE;
-        let regio = props?.regio || DEFAULT_VALUE;
-        let gemeente = props?.Gemeente || DEFAULT_VALUE;
-        let value = props?.value !== undefined && props?.value !== null ? `${props.value.toFixed(2)}` : DEFAULT_VALUE;
-        let unit = props?.unit || DEFAULT_VALUE;
-        csv += `${station_name};${measured_time};${property};${regio};${gemeente};${value};${unit}\n`;
-      });
-      const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-      const blob = new Blob([bom, csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `PZH-Luchtkwaliteit_${selectedProperty.value}_${selectedDay.value.split('|')[1]?.trim()}_${timeValue.value}h.csv`.replace(/ /g, '_');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-      showToast('CSV bestand gedownload.');
-    }
-  } catch (error) {
-    console.error("Download error:", error);
-    showToast(`Download failed: ${error.message}`);
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const handleFileUpload = (file) => {
-  if (!file) return;
-  fileName.value = file.name;
-  isLocalFile.value = true;
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const parsedData = JSON.parse(e.target.result);
-      if (parsedData.type === 'FeatureCollection' && Array.isArray(parsedData.features)) {
-        localFileData.value = parsedData;
-        selectedFilters.regio = [];
-        selectedFilters.Gemeente = [];
-        selectedFilters.station_name = [];
-        filterOptions.regio.forEach(cb => cb.checked = false);
-        filterOptions.Gemeente.forEach(cb => cb.checked = false);
-        filterOptions.station_name.forEach(cb => cb.checked = false);
-        await updateLayer();
-        showToast(`Local file "${file.name}" loaded.`);
-      } else {
-        throw new Error("Invalid GeoJSON format.");
-      }
-    } catch (error) {
-      console.error('Error parsing local file:', error);
-      showToast(`Error reading file: ${error.message}`);
-      handleClearLocalFile();
-    }
-  };
-  reader.onerror = (e) => {
-    console.error('FileReader error:', e);
-    showToast('Could not read the selected file.');
-    handleClearLocalFile();
-  };
-  reader.readAsText(file);
-};
-
-const handleClearLocalFile = () => {
-  isLocalFile.value = false;
-  localFileData.value = null;
-  fileName.value = 'Uploaden | Geojson bestand';
-  fetchInitialStationsAndFilters();
-};
-
-const handleStationClickFromMap = (featureProperties) => {
-  selectedStationPropertiesForModal.value = featureProperties;
-  showStationModal.value = true;
-};
-
-const handleCloseModal = () => {
-  showStationModal.value = false;
-  selectedStationPropertiesForModal.value = null;
-};
-
-const handleChartDataRequest = async ({ stationName, property, locationUuid }) => {
-  console.log(`Chart data requested for: ${stationName}, Property: ${property}, UUID: ${locationUuid}`);
-  isLoading.value = true;
-  try {
-    const url = `${BASE_API_URL}/observations?station=${encodeURIComponent(stationName)}&property=${encodeURIComponent(property)}&location=${encodeURIComponent(locationUuid)}`;
-    console.log("Fetching chart data from:", url);
-    const observationData = await fetchData(url);
-    const processedData = processDataForChart(observationData, property);
-    if (stationModalRef.value && typeof stationModalRef.value.receiveChartData === 'function') {
-      stationModalRef.value.receiveChartData(processedData);
-    } else {
-      console.error("Modal reference or receiveChartData method not available.");
-      showToast("Could not load chart data for modal.");
-    }
-  } catch (error) {
-    console.error(`Error fetching chart data for ${stationName}:`, error);
-    showToast(`Failed to load chart data: ${error.message}`);
-    if (stationModalRef.value && typeof stationModalRef.value.handleChartError === 'function') {
-      stationModalRef.value.handleChartError(error);
-    }
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const processDataForChart = (observationData, property) => {
-  if (!observationData || !observationData.features) {
-    return { labels: [], datasets: [] };
-  }
-  const dataByDate = observationData.features.reduce((acc, feature) => {
-    const props = feature.properties;
-    if (props.value === null || props.value === undefined) return acc;
-    try {
-      const date = new Date(props.measured_time);
-      const dateString = date.toISOString().split('T')[0];
-      const hourIndex = date.getUTCHours();
-      if (!acc[dateString]) {
-        acc[dateString] = {
-          times: Array.from({ length: 24 }, (_, i) => i < 10 ? `0${i}:00 UTC` : `${i}:00 UTC`),
-          values: Array(24).fill(null)
-        };
-      }
-      if (hourIndex >= 0 && hourIndex < 24) {
-        acc[dateString].values[hourIndex] = props.value;
-      } else {
-        console.warn("Invalid hour index calculated:", hourIndex, "from time:", props.measured_time);
-      }
-    } catch (e) {
-      console.error("Error processing date for chart:", props.measured_time, e);
-    }
-    return acc;
-  }, {});
-  const datasets = Object.entries(dataByDate).map(([date, data], index) => {
-    const dateObj = new Date(date + 'T00:00:00Z');
-    const dayOfWeek = dateObj.getUTCDay();
-    const backgroundColors = data.values.map(value => getColor(value, property, 0.6));
-    const borderColors = data.values.map(value => getColor(value, property, 1));
+export default {
+  name: 'SamenMetenDashboard',
+  components: {
+    SidebarContent,
+    ControlPanel,
+    StationDetailModal,
+    NotificationToast
+  },
+  data() {
+    // State remains the same as previous corrected version
     return {
-      label: dateObj.toLocaleDateString('nl-NL', {
-        weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
-      }),
-      dateString: date,
-      data: data.values,
-      backgroundColor: backgroundColors,
-      borderColor: borderColors,
-      borderWidth: 1,
-      hidden: index !== (Object.keys(dataByDate).length - 1)
+      ...data, map: null, geojson: { type: 'FeatureCollection', Features: [] }, property: 'pm25', timeValue: new Date().getHours(), selectedDay: '', isPlaying: false, regio: [], Gemeente: [], station_name: [], search: '', isLocalFile: false, fileName: 'Uploaden | Geojson bestand', interpolationStatus: 'disable', description: '', legendaValues: [], concentrationValues: [], isFrom: '', modalProperties: {}, modalRawObservationData: null, showToast: false, toastTimeString: '', localGeojsonContent: null, interval: null, currentLayerId: null, rasterLayers: new Set(), regios: [], gemeentes: [], stName: [],
     };
-  });
-  datasets.sort((a, b) => new Date(a.dateString) - new Date(b.dateString));
-  const labels = dataByDate[Object.keys(dataByDate)[0]]?.times || Array.from({ length: 24 }, (_, i) => i < 10 ? `0${i}:00 UTC` : `${i}:00 UTC`);
-  return { labels, datasets };
-};
+  },
 
-const handleMapStyleChange = (newStyleUrl) => {
-  currentMapStyleUrl.value = newStyleUrl;
-  console.log("Map style changed to:", newStyleUrl);
-};
+  computed: { // Verbatim
+    dayNames() { return Array.from({length: 30}, (_, i) => { const date = new Date(); date.setDate(date.getDate() - i); return this.formatDate(date); }); },
+    formattedProperty() { const p = { 'pm25': 'PM2,5', 'pm10': 'PM10', 'no2': 'NO2' }; return p[this.property] || this.property; }
+  },
 
-const handleInterpolationLayerUpdate = (layerId, status) => {
-  console.log(`Interpolation layer ${layerId} status: ${status}`);
-};
+  watch: { // Verbatim
+    selectedDay(newVal) { if (this.dayNames.includes(newVal)) { this.updateLayer(); } },
+  },
 
-const reloadPage = () => {
-  window.location.reload();
-};
+  created() { // Verbatim
+    this.STYLE_URL = `https://api.maptiler.com/maps/dataviz/style.json?key=${this.API_KEY}`; this.checkHourChange();
+  },
 
-const startSlider = () => {
-  stopSlider();
-  const todayStr = formatDate(new Date());
-  const isToday = selectedDay.value === todayStr;
-  const maxHour = isToday ? new Date().getHours() : 23;
-  timeValue.value = 0;
-  updateLayer();
-  sliderInterval.value = setInterval(() => {
-    if (timeValue.value < maxHour) {
-      timeValue.value++;
-      updateLayer();
-    } else {
-      stopSlider();
-      isPlaying.value = false;
-    }
-  }, 1550);
-};
+  async mounted() { // Verbatim (minus elements)
+    document.getElementById('czoom').style.zoom = "87%"; const modalDialog = document.querySelector('#modalWithBothOptions .modal-dialog'); if (modalDialog) modalDialog.style.zoom = "113%"; const sidebarElem = document.getElementById('sidebar'); if (sidebarElem) sidebarElem.style.zoom = "87%";
+    this.initializeMap(); this.addControls();
+    this.geojson = await this.fetchData('https://dta-samenmeten-api.azurewebsites.net/api/data/stations');
+    [this.regios, this.gemeentes, this.stName] = await Promise.all([ this.getUniqueItems(this.geojson, 'regio'), this.getUniqueItems(this.geojson, 'Gemeente'), this.getUniqueItems(this.geojson, 'station_name') ]);
+    this.createCheckboxes('regio', this.regios); this.createCheckboxes('Gemeente', this.gemeentes); this.createCheckboxes('station_name', this.stName);
+    this.selectedDay = this.dayNames[0];
+  },
 
-const stopSlider = () => {
-  if (sliderInterval.value) {
-    clearInterval(sliderInterval.value);
-    sliderInterval.value = null;
-  }
-};
+  methods: {
+    // ==================================================
+    // == Methods: Map, Data, Helpers, Orchestration   ==
+    // ==================================================
 
-const checkHourChange = () => {
-  hourlyUpdateInterval.value = setInterval(() => {
-    const todayStr = formatDate(new Date());
-    if (!isPlaying.value && selectedDay.value === todayStr) {
-      const currentHour = new Date().getHours();
-      if (timeValue.value !== currentHour) {
-        console.log("Auto-updating time to current hour:", currentHour);
-        timeValue.value = currentHour;
-        updateLayer();
+    async initializeMap() { /* Verbatim */
+      this.map = new window.maplibregl.Map({ container: 'map', style: this.STYLE_URL, center: [4.218788, 52.008663], zoom: 8.9, });
+      this.map.on('load', () => { this.addLineSourceAndLayer(); this.updateLayer(); this.map.on('click', 'stations', this.handleStationClick); });
+    },
+    async addLineSourceAndLayer() { /* Verbatim */
+      if (!this.map || !this.map.isStyleLoaded()) return; if (!this.map.getSource('line')) { this.map.addSource('line', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: this.bbox } } }); } if (!this.map.getLayer('line')) { this.map.addLayer({ id: 'line', type: 'line', source: 'line', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ff0000', 'line-width': 1.4, 'line-opacity': 0.8, 'line-blur': 0.5 } }); }
+    },
+    async addControls() { /* Verbatim */
+      if (!this.map) return; this.addStyleSwitchControl(); this.map.addControl(new window.maplibregl.FullscreenControl()); this.map.addControl(new window.maplibregl.NavigationControl()); this.map.addControl(new window.maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }));
+    },
+    addStyleSwitchControl() { /* Verbatim */
+      if (!this.map) return; const styleSwitcher = this.createStyleSwitcher(); const styleSwitchControl = this.createStyleSwitchControl(styleSwitcher); this.map.addControl(styleSwitchControl, 'top-right');
+    },
+    createStyleSwitcher() { /* Verbatim (Original Timeout) */
+      const styleSwitcherContainer = document.createElement('div'); styleSwitcherContainer.className = 'maplibregl-ctrl maplibregl-ctrl-group'; const label = document.createElement('label'); label.className = 'fw-semibold text-success'; label.innerText = 'Selecteer achtergrond:'; styleSwitcherContainer.appendChild(label); const styleSwitcher = document.createElement('select'); styleSwitcher.className = 'form-select form-select-sm'; styleSwitcher.style.fontSize = '1.2em'; styleSwitcher.style.cursor = 'pointer'; const styles = this.STYLE_URLS.map(url => `${url}${this.API_KEY}`); styles.forEach((style, index) => { const option = document.createElement('option'); option.value = style; option.text = this.STYLE_NAMES[index] || `Style ${index + 1}`; styleSwitcher.appendChild(option); });
+      styleSwitcher.onchange = async (event) => { try { this.map.setStyle(event.target.value); setTimeout(() => { this.updateLayer(); this.addLineSourceAndLayer(); }, 50); } catch (error) { console.error('An error occurred while switching styles:', error); } };
+      styleSwitcherContainer.appendChild(styleSwitcher); return styleSwitcherContainer;
+    },
+    createStyleSwitchControl(styleSwitcher) { /* Verbatim */
+      return { onAdd: () => { return styleSwitcher; }, onRemove: function() {}, getDefaultPosition: function() { return 'top-right'; }, };
+    },
+    async checkHourChange() { /* Verbatim */
+      setInterval(async () => { this.updateLayer(); }, 1000 * 60 * 20);
+    },
+    formatDate(date) { /* Verbatim */
+      const dayName = this.days[date.getDay()]; const dateString = date.toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'}); return `${dayName} | ${dateString}`;
+    },
+    async fetchData(url) { /* Verbatim (with basic error handling) */
+      try { let response = await fetch(url, {method: "GET", credentials: "include", keepalive: true}); if (!response.ok) { console.error(`HTTP error! status: ${response.status} for ${url}`); return { Features: [] }; } return await response.json(); } catch (error) { console.error(`Workspace failed for ${url}:`, error); return { Features: [] }; }
+    },
+    async getUniqueItems(geojson, uniqueColumn) { /* Verbatim */
+      if (!geojson || !geojson.Features) return []; return [...new Set(geojson.Features.map(Feature => Feature.properties?.[uniqueColumn]))];
+    },
+    async createCheckboxes(id, items) { /* Verbatim (original simple version) */
+      const selectedItems = this[id] ? this[id].filter(i => i.checked).map(i => i.id) : []; this[id] = items.sort().map(item => ({ id: item, label: item, checked: selectedItems.includes(item) }));
+    },
+    async updateLayer() { /* ADAPTED */
+      const propInfo = this.propValues[this.property] || this.propValues.default; if(propInfo){ this.description = propInfo.description; this.legendaValues = propInfo.legendaValues; this.concentrationValues = propInfo.concentrationValues; }
+      const selectedRegio = this.regio.filter(i => i.checked).map(i => i.id); const selectedGemeente = this.Gemeente.filter(i => i.checked).map(i => i.id); const selectedStName = this.station_name.filter(i => i.checked).map(i => i.id);
+      this.reloadLayer(this.map, this.timeValue, selectedRegio, selectedGemeente, selectedStName).catch(error => console.error('Error reloading layer:', error));
+    },
+    async reloadLayer(map, hour, selectedRegio, selectedGemeente, selectedStName) { /* ADAPTED */
+      try { if (!this.map) return; this.fileName = this.isLocalFile ? this.fileName : 'Geojson bestand | Uploaden'; this.isFrom = this.isLocalFile ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold"">van jouw Local File</span>' : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata. Bekijk de metadata voor details over de serverdata.</a>'; const selectedDateIndex = this.dayNames.indexOf(this.selectedDay); if (selectedDateIndex === -1) { console.warn("Invalid selected day for reload:", this.selectedDay); return; }
+        await this.filterGeojsonFeatures(hour, selectedDateIndex, this.property, selectedRegio, selectedGemeente, selectedStName, this.isLocalFile);
+        this.updateMapSourceAndLayer(this.map, this.geojson);
+      } catch (error) { console.error(error); }
+    },
+    async filterGeojsonFeatures(hour, selectedDateIndex, selectedProperty, selectedRegio, selectedGemeente, selectedStName, isLocalFile) { // *** CORRECTED ***
+      const now = new Date(); now.setDate(now.getDate() - selectedDateIndex); const date = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hour) + now.getTimezoneOffset() / 60)); const measured_time = date.toISOString().replace('T', '%20').substring(0, 19) + '00'; const measured_time_iso = date.toISOString();
+      if (this.interpolationStatus === 'activate') { if (this.map && this.map.isStyleLoaded()) { this.idw_interpolation(measured_time_iso); } } else if (this.currentLayerId && this.map && this.map.getLayer(this.currentLayerId)) { this.map.setPaintProperty(this.currentLayerId, 'raster-opacity', 0); }
+      const filters = { 'property': selectedProperty, 'station': selectedStName, 'gemeente': selectedGemeente, 'regio': selectedRegio }; // Use arrays directly
+
+      let filteredGeojson;
+      if (isLocalFile) { if (this.localGeojsonContent) { filteredGeojson = this.localGeojsonContent; if (filteredGeojson.features && !filteredGeojson.Features) { filteredGeojson.Features = filteredGeojson.features; delete filteredGeojson.features; } } else { filteredGeojson = { type: 'FeatureCollection', Features: [] }; } }
+      else {
+        let url1 = new URL('https://dta-samenmeten-api.azurewebsites.net/api/data/stations');
+        // *** CORRECTED LOOP ***
+        Object.entries(filters).forEach(([key, value]) => {
+          // Only append if value exists and has length (for arrays or strings)
+          if (value && value.length > 0) {
+            // Check if value is an array before attempting join (which was removed anyway)
+            // Use original direct append:
+            url1.searchParams.append(key, value);
+          }
+        });
+        let url2 = new URL(`https://dta-samenmeten-api.azurewebsites.net/api/data/observations?property=${selectedProperty}&measured_time=${measured_time}`); // Use original time format
+
+        try { let [stations, observations] = await Promise.all([this.fetchData(url1.toString()), this.fetchData(url2.toString())]); if (!stations || !stations.Features || !observations || !observations.Features){ throw new Error("Invalid API data"); } let observationMap = new Map(); observations.Features.forEach(obs => { if(obs?.properties?.station_name) observationMap.set(obs.properties.station_name, obs); });
+          filteredGeojson = { type: 'FeatureCollection', Features: stations.Features.filter(station => { if (!station?.properties?.station_name) return false; let matchingObservation = observationMap.get(station.properties.station_name); if (matchingObservation?.properties && matchingObservation?.geometry) { const { avg_value, max_value, min_value } = station.properties; station.properties = {...matchingObservation.properties}; if (avg_value !== undefined) station.properties.avg_value = avg_value; if (max_value !== undefined) station.properties.max_value = max_value; if (min_value !== undefined) station.properties.min_value = min_value; station.geometry = matchingObservation.geometry; return true; } return false; })};
+        } catch (error) { console.error("Error fetching/processing API data:", error); filteredGeojson = { type: 'FeatureCollection', Features: [] }; }
       }
-    }
-  }, 1000 * 60 * 5);
+      this.geojson = filteredGeojson;
+      [this.regios, this.gemeentes, this.stName] = await Promise.all([ this.getUniqueItems(this.geojson, 'regio'), this.getUniqueItems(this.geojson, 'Gemeente'), this.getUniqueItems(this.geojson, 'station_name') ]);
+      this.createCheckboxes('regio', this.regios); this.createCheckboxes('Gemeente', this.gemeentes); this.createCheckboxes('station_name', this.stName);
+    },
+    async idw_interpolation(date) { /* ADAPTED */
+      if (!this.map || !this.map.isStyleLoaded()) return; let bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691]; let layerId = 'interpolatie-' + date + '-' + this.property; this.rasterLayers.add(layerId); this.rasterLayers.forEach(id => { if (this.map.getLayer(id)) { this.map.setPaintProperty(id, 'raster-opacity', id === layerId ? 1 : 0); } }); this.currentLayerId = layerId;
+      if (!this.map.getSource(layerId)) { let url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${this.property}_sqldb&bbox=${bounds.join(',')}&time=${date}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`; this.map.addSource(layerId, { 'type': 'image', 'url': url, 'coordinates': [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]] }); }
+      if (!this.map.getLayer(layerId)) { this.map.addLayer({'id': layerId, 'type': 'raster', 'source': layerId, 'paint': {'raster-opacity': 1}}); } else { this.map.setPaintProperty(layerId, 'raster-opacity', 1); }
+    },
+    async downloadGeoJSON() { /* Verbatim */
+      let dataToDownload = { ...this.geojson }; if (dataToDownload.Features && !dataToDownload.features) { dataToDownload.features = dataToDownload.Features; delete dataToDownload.Features; } let dataStr = JSON.stringify(dataToDownload, null, 2); let dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr); let link = document.createElement('a'); link.href = dataUri; link.download = `PZH-Luchtkwaliteit_${this.property}.geojson`; this.toast(); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    },
+    async downloadCSV() { /* Verbatim (Original logic) */
+      const CSV_HEADER = 'Station naam;Datum en tijd;Property;Regio;Gemeente;Value;Unit\n'; const DEFAULT_VALUE = 'N/A'; let csv = CSV_HEADER; const features = this.geojson?.features ?? this.geojson?.Features ?? [];
+      features.forEach(feature => { let p = feature.properties; let s = p?.station_name||DEFAULT_VALUE; let m = p?.measured_time ? new Date(p.measured_time).toISOString() : DEFAULT_VALUE; let prop = p?.property||DEFAULT_VALUE; let r = p?.regio||DEFAULT_VALUE; let g = p?.Gemeente||DEFAULT_VALUE; let v = p?.value!==undefined?`${p.value.toFixed(2)}`:DEFAULT_VALUE; let u = p?.unit||DEFAULT_VALUE; csv += `${s}; ${m}; ${prop}; ${r}; ${g}; ${v}; ${u}\n`; });
+      let link = document.createElement('a'); link.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv); link.download = 'Provincie Zuid-Holland Luchtkwaliteit - Samen Meten Dashboard.csv'; this.toast(); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    },
+    async toast() { /* ADAPTED */ const now = new Date(); this.toastTimeString = now.getHours() + ':' + now.getMinutes() + ':' + now.getSeconds(); this.showToast = true; },
+    updateMapSourceAndLayer(map, geojson) { /* Verbatim */
+      if (!map || !map.isStyleLoaded()) return; if (!geojson || (!geojson.Features && !geojson.features)) { geojson = {type:'FeatureCollection', features:[]}; }
+      if (geojson.Features && !geojson.features) { geojson.features = geojson.Features; delete geojson.Features; } const source = map.getSource('stations'); if (!source) { map.addSource("stations", {type: 'geojson', data: geojson}); } else { source.setData(geojson); } if (!map.getLayer('stations')) { this.addStationsLayer(); }
+    },
+    getCircleColor() { /* Verbatim */
+      return [ 'case', ['==', ['get', 'property'], 'pm25'], ['step', ['get', 'value'], '#1E90FF', 8.3, '#48D1CC', 16.7, '#9ACD32', 25, '#DAA520', Infinity, '#000000'], ['in', ['get', 'property'], ['literal', ['no2', 'pm10']]], ['step', ['get', 'value'], '#1E90FF', 13.3, '#48D1CC', 26.6, '#9ACD32', 40, '#DAA520', Infinity, '#000000'], '#000000' ];
+    },
+    addStationsLayer() { /* Verbatim */
+      if (!this.map || !this.map.getSource('stations') || this.map.getLayer('stations')) return; this.map.addLayer({ 'id': 'stations', 'type': 'circle', 'source': 'stations', 'paint': { 'circle-radius': 6, 'circle-color': this.getCircleColor(), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.8, } });
+    },
+    async handleStationClick(e) { /* Verbatim */
+      if (!this.map) return; const features = this.map.queryRenderedFeatures(e.point, { layers: ['stations'] }); if (!features || features.length === 0) return; if (features.length > 1) { this.createDropdownPopup(features, e); } else { this.createDetailPopup(features[0], e); }
+    },
+    async createDropdownPopup(features, e) { /* Verbatim ($nextTick, corrected forEach) */
+      if (!this.map) return; let dropdownHTML = `<div class="card text-center border-primary"><div class="card-header bg-primary text-white"><h6>Selecteer Station <i class="bi bi-search"></i></h6></div><div class="card-body"><div class="dropdown"><button class="btn btn-outline-primary dropdown-toggle" type="button" id="stationSelect" data-bs-toggle="dropdown" aria-expanded="false">Kies een station</button><div class="dropdown-menu" aria-labelledby="stationSelect" style="height: 200px; overflow-y: auto;">`;
+      features.forEach((feature, index) => { const color = this.getColor(feature.properties.value, feature.properties.property, 1); dropdownHTML += `<a class="dropdown-item" href="#" data-value="${index}"><i class="bi bi-geo-alt-fill" style="color: ${color};"></i> ${feature.properties.station_name}</a>`; });
+      dropdownHTML += `</div></div></div></div>`; const popup = new window.maplibregl.Popup({className: 'my-popup'}).setLngLat(e.lngLat).setHTML(dropdownHTML).addTo(this.map);
+      this.$nextTick(() => { const popupElement = popup.getElement(); if (!popupElement) return; const dropdownItems = Array.from(popupElement.querySelectorAll('.dropdown-item')); dropdownItems.forEach(item => { item.addEventListener('click', (event) => { event.preventDefault(); popup.remove(); this.createDetailPopup(features[event.target.dataset.value], e); }); }); });
+    },
+    async createDetailPopup(feature, e) { /* Verbatim ($nextTick) */
+      if (!this.map || !feature || !feature.properties) return; const {properties} = feature; this.modalProperties = properties;
+      const popup = new window.maplibregl.Popup({className: 'my-popup'}).setLngLat(e.lngLat).setHTML(this.getPopupHTML(properties)).addTo(this.map);
+      this.$nextTick(() => { const popupElement = popup.getElement(); if (!popupElement) return; const button = popupElement.querySelector('button'); if (!button) return;
+        button.addEventListener('click', async () => { button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">Loading...</span>'; try { await this.loadChart(properties); this.handleShowChartModal(properties); } finally { popup.remove(); } });
+      });
+    },
+    getPopupHTML({station_name, property, value, unit, Gemeente, regio, measured_time}) { /* Verbatim */
+      const formattedDate = new Date(measured_time).toLocaleString('nl-NL', { timeZone: 'GMT', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }); const color = this.getColor(value, property, 1);
+      return ` <div class="card text-center" style="border-color: ${color};"> <div class="card-header" style="background-color: ${color}; color: white;"> <h6>Station naam: ${station_name}</h6> </div> <div class="card-body"> <h6 class="card-title">Component en meetwaarde:<br>${property}: ${value} ${unit}</h6> <h6>Beschrijving:<br>Gemeente ${Gemeente} - Regio ${regio}</h6> <h6 class="card-text"> <small class="text-muted">Laatst update: ${formattedDate}</small> </h6> <button class="btn mt-3" type="button" data-bs-toggle="modal" data-bs-target="#modalWithBothOptions" style="background-color: ${color}; color: white;" data-properties='${JSON.stringify({station_name, property, value, unit, Gemeente, regio, measured_time})}'>        Informatie over station </button> </div> </div>`;
+    },
+    async loadChart(properties) { /* ADAPTED */
+      try { if (!properties || !properties.station_name || !properties.property) throw new Error("Missing properties for loadChart"); const url = new URL(`https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${properties.station_name}&property=${properties.property}&location=${properties.location_uuid}`); const observationData = await this.fetchData(url.toString()); if (!observationData || !observationData.Features) { throw new Error("Invalid observation data fetched"); } this.modalRawObservationData = observationData; } catch (error) { console.error(`An error occurred while loading the chart data: ${error}`); this.modalRawObservationData = null; }
+    },
+    getColor(value, property, alpha) { /* Verbatim */
+      const safeAlpha = (typeof alpha === 'number' && alpha >= 0 && alpha <= 1) ? alpha : 1; const valueColor = property === "pm25" ? [8.3, 16.7, 25, Infinity] : [13.3, 26.6, 40, Infinity]; const colors = [ `rgba(30, 144, 255, ${safeAlpha})`, `rgba(72, 209, 204, ${safeAlpha})`, `rgba(154, 205, 50, ${safeAlpha})`, `rgba(218, 165, 32, ${safeAlpha})` ]; const defaultColor = `rgba(0, 0, 0, ${safeAlpha})`; if (value === null || value === undefined) return defaultColor; const colorIndex = valueColor.findIndex(threshold => value < threshold); return colors[colorIndex] !== undefined ? colors[colorIndex] : colors[colors.length - 1];
+    },
+
+    // ==================================================
+    // == Event Handlers & Internal Logic              ==
+    // ==================================================
+    handlePropertyUpdate(newProperty) { if (this.property !== newProperty) { this.property = newProperty; this.updateLayer(); }},
+    handleTimeValueUpdate(newTimeValue) { const numVal = Number(newTimeValue); if (this.timeValue !== numVal) { this.timeValue = numVal; this.stopSliderInternal(); this.updateLayer(); }},
+    handleSelectedDayUpdate(newDay) { if (this.selectedDay !== newDay) { this.selectedDay = newDay; /* Watcher handles updateLayer */ }},
+    handleSearchUpdate(newSearch) { if (this.search !== newSearch) { this.search = newSearch; /* Let selectMatchingStations handle update */ }},
+    handleInterpolationStatusUpdate(newStatus) { if (this.interpolationStatus !== newStatus) { this.interpolationStatus = newStatus; this.updateLayer(); }},
+    handleTogglePlay() { this.isPlaying = !this.isPlaying; if (this.isPlaying) { this.startSliderInternal(); } else { this.stopSliderInternal(); }},
+    handleStopSlider() { this.stopSliderInternal(); },
+    handleClearDayInput() { this.selectedDay = ''; this.updateLayer(); },
+    handleFilterUpdate(filterInfo) { const { type, id, checked } = filterInfo; if (this[type]) { const itemIndex = this[type].findIndex(item => item.id === id); if (itemIndex !== -1) { this[type][itemIndex].checked = checked; this.updateLayer(); }}},
+    handleSelectMatchingStations(searchTerm) { const lower = searchTerm.toLowerCase(); this.station_name.forEach(s => { s.checked = s.label.toLowerCase() === lower; }); this.updateLayer(); },
+    handleClearLocalFile() { this.localGeojsonContent = null; this.isLocalFile = false; this.fileName = 'Uploaden | Geojson bestand'; this.updateLayer(); },
+    handleFileUploaded(fileObject) { if (fileObject) { const reader = new FileReader(); reader.onload = async (e) => { try { const content = JSON.parse(e.target.result); this.localGeojsonContent = content; this.isLocalFile = true; this.fileName = fileObject.name; await this.updateLayer(); } catch (error) { this.toast("Fout bij lezen GeoJSON."); this.handleClearLocalFile(); } }; reader.onerror = () => { this.toast("Fout bij lezen bestand."); this.handleClearLocalFile(); }; reader.readAsText(fileObject); } else { if (this.isLocalFile) { this.handleClearLocalFile(); } } },
+    handleShowChartModal(properties) { this.modalProperties = properties; const modalElement = document.getElementById('modalWithBothOptions'); if (modalElement && window.bootstrap?.Modal) { window.bootstrap.Modal.getOrCreateInstance(modalElement).show(); } },
+    handleReloadPage() { window.location.reload(); },
+    startSliderInternal() { /* Verbatim logic from original startSlider */ this.interval && clearInterval(this.interval); const today = this.formatDate(new Date()); const maxH = this.selectedDay === today ? new Date().getHours() : 23; this.timeValue = 0; this.updateLayer(); this.interval = setInterval(() => { if (this.timeValue < maxH) { this.timeValue++; this.updateLayer(); } else { this.stopSliderInternal(); this.isPlaying = false; } }, 1550); },
+    stopSliderInternal() { /* Verbatim logic from original stopSlider */ clearInterval(this.interval); this.interval = null; },
+  },
 };
-
-const fetchInitialStationsAndFilters = async () => {
-  isLoading.value = true;
-  try {
-    const stationsUrl = `${BASE_API_URL}/stations`;
-    const initialStationsData = await fetchData(stationsUrl);
-    if (!initialStationsData || !initialStationsData.features) {
-      throw new Error("No initial station data received.");
-    }
-    allStationsGeojson.value = initialStationsData;
-    const uniqueRegios = getUniqueItems(initialStationsData, 'regio');
-    const uniqueGemeentes = getUniqueItems(initialStationsData, 'Gemeente');
-    const uniqueStations = getUniqueItems(initialStationsData, 'station_name');
-    createOrUpdateCheckboxes('regio', uniqueRegios);
-    createOrUpdateCheckboxes('Gemeente', uniqueGemeentes);
-    createOrUpdateCheckboxes('station_name', uniqueStations);
-    selectedDay.value = dayNames.value[0];
-  } catch (error) {
-    console.error("Failed to fetch initial station data:", error);
-    showToast("Could not load initial station list.");
-  } finally {
-    // isLoading false will be set after map loads and first updateLayer completes
-  }
-};
-
-onMounted(() => {
-  fetchInitialStationsAndFilters();
-  checkHourChange();
-});
-
-onBeforeUnmount(() => {
-  stopSlider();
-  if (hourlyUpdateInterval.value) {
-    clearInterval(hourlyUpdateInterval.value);
-  }
-});
-
 </script>
 
 <style scoped>
-#app-container {
-  font-family: 'Arial', sans-serif;
-}
+/* Retained Verbatim Global/Layout Styles */
+*::-webkit-scrollbar { width: 0.5vw; }
+*::-webkit-scrollbar-thumb { background: #888; border-radius: 0.5vw; }
+*::-webkit-scrollbar-thumb:hover { background: #555; }
+* ::selection { font-family: Arial !important; background-color: #d11f3d; color: white; }
+.custom-div { position: relative; max-height: 97%; overflow-y: auto; overflow-x: hidden; z-index: 1; }
+.focused-label .form-control:focus ~ label { color: #0081ff; }
+#map { z-index: 0; }
+</style>
 
-.custom-div {
-  position: relative;
-}
-
-.custom-div::-webkit-scrollbar {
-  width: 8px;
-}
-.custom-div::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-.custom-div::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
-}
-.custom-div::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-.loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.7);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 1050;
-}
-
-@import 'maplibre-gl/dist/maplibre-gl.css';
+<style>
+/* Retained Verbatim Global styles needed for Maplibre popups */
+.maplibregl-popup-content { /* Keep original global styles */ }
+.my-popup .maplibregl-popup-content { padding: 0; max-width: none !important; border-radius: 0.375rem; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important; }
 </style>
