@@ -9,63 +9,64 @@
   <div class="container-fluid" id="czoom">
     <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
 
-    <ControlsPanel
-        :dayNames="dayNames"
-        :formattedProperty="formattedProperty"
-        :legendaValues="legendaValues"
-        :colors="colors"
-        :concentrationValues="concentrationValues"
-        @reloadPage="reloadPage"
-        @updateLayer="updateLayer"
-    />
-    <FilterPanel
-        :regio="regios"
-        :gemeente="gemeentes"
-        :stationName="stName"
-        :isLocalFile="isLocalFile"
-        :fileName="fileName"
-        @updateLayer="updateLayer"
-        @idwInterpolation="idw_interpolation"
-        @downloadGeoJSON="downloadGeoJSON"
-        @downloadCSV="downloadCSV"
-        @clearInput="clearInput"
-    />
+      <ControlsPanel
+          :dayNames="dayNames"
+          :formattedProperty="formattedProperty"
+          :legendaValues="legendaValues"
+          :colors="colors"
+          :concentrationValues="concentrationValues"
+          @reloadPage="reloadPage"
+          @updateLayer="updateLayer"
+      />
+      <FilterPanel
+          :regio="regios"
+          :gemeente="gemeentes"
+          :stationName="stName"
+          :isLocalFile="isLocalFile"
+          :fileName="fileName"
+          @updateLayer="updateLayer"
+          @idwInterpolation="idw_interpolation"
+          @downloadGeoJSON="downloadGeoJSON"
+          @downloadCSV="downloadCSV"
+          @clearInput="clearInput"
+      />
     </div>
-  </div>
-  <div class="modal fade content-none" id="modalWithBothOptions" tabindex="-1" aria-labelledby="modalWithBothOptionsLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl" id="czoom2">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title text-center" id="modalWithBothOptionsLabel">Informatie over de station: <span v-text="properties.station_name"></span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="card-body">
-            <p class="text-muted">
-              Het station bevindt zich in de gemeente {{ properties.Gemeente }}.<br>
-              De fijnstofwaarde {{ formattedProperty }} is gemeten op dit station, dat zich in de regio {{ properties.regio }} bevindt.<br>
-            </p>
-            <h6 class="text-center pt-3">Grafische representatie van {{ properties.station_name }}</h6>
-            <div class="d-flex justify-content-center overflow-auto">
-              <canvas ref="myChart"></canvas>
+    <div class="modal fade content-none" id="modalWithBothOptions" tabindex="-1" aria-labelledby="modalWithBothOptionsLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl" id="czoom2">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title text-center" id="modalWithBothOptionsLabel">Informatie over de station: <span v-text="properties.station_name"></span></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="card-body">
+              <p class="text-muted">
+                Het station bevindt zich in de gemeente {{ properties.Gemeente }}.<br>
+                De fijnstofwaarde {{ formattedProperty }} is gemeten op dit station, dat zich in de regio {{ properties.regio }} bevindt.<br>
+              </p>
+              <h6 class="text-center pt-3">Grafische representatie van {{ properties.station_name }}</h6>
+              <div class="d-flex justify-content-center overflow-auto">
+                <canvas ref="myChart"></canvas>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-  <div class="toast-container position-fixed bottom-0 end-0 p-3 content-none" style="z-index: 9999;">
-    <div ref="liveToast" class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="d-flex">
-        <div class="toast-body">
-          <i class="bi bi-patch-check me-2"></i>
-          De bestanden zijn gedownload.
-          <small class="d-block mt-1">{{ timeString }}</small>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3 content-none" style="z-index: 9999;">
+      <div ref="liveToast" class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body">
+            <i class="bi bi-patch-check me-2"></i>
+            De bestanden zijn gedownload.
+            <small class="d-block mt-1">{{ timeString }}</small>
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
       </div>
     </div>
   </div>
+
 </template>
 
 <script>
@@ -185,7 +186,7 @@ export default {
         filtered = { type:'FeatureCollection', Features: stations.Features.filter(s=>{ const o=obsMap.get(s.properties.station_name); if(o){ o.properties.avg_value=s.properties.avg_value; o.properties.max_value=s.properties.max_value; o.properties.min_value=s.properties.min_value; s.properties={...o.properties}; s.geometry=o.geometry; return true;} return false; }) }
       }
       this.geojson=filtered;
-          [this.regios,this.gemeentes,this.stName]=await Promise.all([ this.getUniqueItems(this.geojson,'regio'), this.getUniqueItems(this.geojson,'Gemeente'), this.getUniqueItems(this.geojson,'station_name') ])
+      [this.regios,this.gemeentes,this.stName]=await Promise.all([ this.getUniqueItems(this.geojson,'regio'), this.getUniqueItems(this.geojson,'Gemeente'), this.getUniqueItems(this.geojson,'station_name') ])
       this.createCheckboxes('regio',this.regios); this.createCheckboxes('Gemeente',this.gemeentes); this.createCheckboxes('station_name',this.stName)
     },
     idw_interpolation(date){ const b=[3.773675345120739,51.64377788724585,5.031415001585676,52.3325109475691]; const id='interpolatie-'+date+'-'+this.elements.property.value; this.rasterLayers.add(id); this.rasterLayers.forEach(i=>this.map.getLayer(i)&&this.map.setPaintProperty(i,'raster-opacity',i===id?1:0)); this.currentLayerId=id; if(!this.map.getLayer(id)){ const url=`https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${this.elements.property.value}_sqldb&bbox=${b.join(',')}&time=${date}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`; this.map.addSource(id,{type:'image',url,coordinates:[[b[0],b[3]],[b[2],b[3]],[b[2],b[1]],[b[0],b[1]]]}); this.map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':1}}) }
@@ -242,8 +243,8 @@ export default {
     createChart(ctx,prop,db,ds){ const yMin=prop==='pm25'?25:40; return new window.Chart(ctx,{type:'bar',data:{labels:db[Object.keys(db)[0]].times,datasets:ds},options:{...this.chartOptions,plugins:{...this.chartOptions.plugins,annotation:{annotations:[{type:'box',yMin:yMin,backgroundColor:'rgba(230,25,75,0.1)',borderColor:'rgba(230,25,75,1)',label:{content:'Bad',enabled:true,position:'center'}}]},legend:{display:true,onHover:(evt,item,lg)=>this.handleHover(evt,item,lg),onLeave:(evt,item,lg)=>this.handleLeave(evt,item,lg)}}}}); },
     handleHover(evt,item,lg){ lg.chart.data.datasets.forEach((d,i)=>{ d.backgroundColor=i===item.datasetIndex?d.originalBackgroundColor.map(c=>{const a=c.slice(0,-1).split(',');a[3]='0.8)';return a.join(',')}):d.originalBackgroundColor.map(c=>{const a=c.slice(0,-1).split(',');a[3]='0.1)';return a.join(',')}); }); lg.chart.update(); },
     handleLeave(evt,item,lg){ lg.chart.data.datasets.forEach(d=>{d.backgroundColor=d.originalBackgroundColor}); lg.chart.update(); }
-    }
-    }
+  }
+}
 </script>
 
 <style scoped>
