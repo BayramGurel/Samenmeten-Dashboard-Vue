@@ -7,6 +7,8 @@
     />
   </div>
   <div class="container-fluid" id="czoom">
+    <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
+
     <ControlsPanel
         :dayNames="dayNames"
         :formattedProperty="formattedProperty"
@@ -28,6 +30,7 @@
         @downloadCSV="downloadCSV"
         @clearInput="clearInput"
     />
+    </div>
   </div>
   <div class="modal fade content-none" id="modalWithBothOptions" tabindex="-1" aria-labelledby="modalWithBothOptionsLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl" id="czoom2">

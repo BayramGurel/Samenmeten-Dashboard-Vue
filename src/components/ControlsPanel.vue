@@ -1,5 +1,4 @@
 <template>
-  <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
     <div class="container bg-white rounded pb-3">
       <div class="row mb-2">
         <div class="col-12 text-center">
@@ -72,7 +71,6 @@
         </div>
       </div>
     </div>
-  </div>
 </template>
 
 <script>
