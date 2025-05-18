@@ -1,14 +1,19 @@
 <template>
-  <div class="offcanvas offcanvas-end rounded" tabindex="-1" id="sidebar" style="width: 50%; top: 1%; bottom: 1%;">
+  <div class="offcanvas offcanvas-end rounded" tabindex="-1" id="sidebar" style="width:50%;top:1%;bottom:1%;" aria-labelledby="sidebarLabel" data-bs-backdrop="false" data-bs-scroll="true" ref="offcanvas">
     <div class="offcanvas-header">
-      <h3 class="offcanvas-title">Informatie over de stations</h3>
+      <h3 id="sidebarLabel" class="offcanvas-title">Informatie over de stations</h3>
       <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
     <div class="offcanvas-body overflow-auto position-relative">
-      <div id="carouselExampleIndicators" class="carousel slide position-absolute top-0 start-0 w-100 h-100" data-bs-ride="carousel">
+      <!-- Custom carousel -->
+      <div class="position-absolute top-0 start-0 w-100 h-100" style="z-index:-1;">
         <div class="carousel-inner h-100">
-          <div v-for="(src, index) in images" :key="index" :class="['carousel-item', { active: index === 0 }]" class="h-100">
-            <img :src="src" class="d-block w-100 h-100 object-fit-cover" alt="...">
+          <div
+              v-for="(src,index) in images"
+              :key="index"
+              :class="['carousel-item h-100',{active:index===activeSlide}]"
+          >
+            <img :src="src" class="d-block w-100 h-100 object-fit-cover" alt="Stationbeeld" />
           </div>
         </div>
       </div>
@@ -16,21 +21,40 @@
       <div class="container-fluid position-relative">
         <div class="row">
           <div class="accordion" id="accordionExample">
+            <!-- Gemiddelden -->
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingOne">
-                <button class="accordion-button text-primary-emphasis fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                  <p>Gemiddelde, maximum en minimaal waarde van <b class="text-primary fw-semibold">concentration {{ formattedProperty }} nk (µg/m³)</b> van vandaag.</p>
+                <button
+                    class="accordion-button text-primary-emphasis fw-semibold"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#collapseOne"
+                    aria-expanded="true"
+                    aria-controls="collapseOne"
+                >
+                  <p>
+                    Gemiddelde, maximum en minimaal waarde van
+                    <b class="text-primary fw-semibold">
+                      concentration {{ formattedProperty }} (µg/m³)
+                    </b>
+                    van vandaag.
+                  </p>
                 </button>
               </h2>
-              <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+              <div
+                  id="collapseOne"
+                  class="accordion-collapse collapse show"
+                  aria-labelledby="headingOne"
+                  data-bs-parent="#accordionExample"
+              >
                 <div class="accordion-body">
-                  <div class="col-12 table-responsive overflow-auto" style="max-height: 33vh;">
-                    <table class="table table-hover table-bordered">
+                  <div class="table-responsive" style="max-height:33vh;">
+                    <table class="table table-hover table-bordered mb-0">
                       <thead>
                       <tr>
                         <th scope="col">Station</th>
                         <th scope="col">Gemiddelde</th>
-                        <th scope="col">maximum</th>
+                        <th scope="col">Maximum</th>
                         <th scope="col">Minimaal</th>
                       </tr>
                       </thead>
@@ -48,33 +72,70 @@
               </div>
             </div>
 
+            <!-- Beschrijving -->
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingTwo">
-                <button class="accordion-button text-primary-emphasis fw-semibold collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                  <p>Beschrijving van fijnstof | <span class="property text-primary">{{ formattedProperty }}</span></p>
+                <button
+                    class="accordion-button collapsed text-primary-emphasis fw-semibold"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#collapseTwo"
+                    aria-expanded="false"
+                    aria-controls="collapseTwo"
+                >
+                  <p>
+                    Beschrijving van fijnstof |
+                    <span class="property text-primary">{{ formattedProperty }}</span>
+                  </p>
                 </button>
               </h2>
-              <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#accordionExample">
+              <div
+                  id="collapseTwo"
+                  class="accordion-collapse collapse"
+                  aria-labelledby="headingTwo"
+                  data-bs-parent="#accordionExample"
+              >
                 <div class="accordion-body">
-                  <h6 class="description overflow-auto" v-html="description" style="max-height: 40vh;"></h6>
+                  <h6 class="description overflow-auto" style="max-height:40vh;" v-html="description"></h6>
                 </div>
               </div>
             </div>
 
+            <!-- Video -->
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingThree">
-                <button class="accordion-button text-primary-emphasis fw-semibold collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                <button
+                    class="accordion-button collapsed text-primary-emphasis fw-semibold"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#collapseThree"
+                    aria-expanded="false"
+                    aria-controls="collapseThree"
+                >
                   <p>Bekijk dit filmpje voor meer informatie</p>
                 </button>
               </h2>
-              <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#accordionExample">
+              <div
+                  id="collapseThree"
+                  class="accordion-collapse collapse"
+                  aria-labelledby="headingThree"
+                  data-bs-parent="#accordionExample"
+              >
                 <div class="accordion-body">
-                  <h5><a href="https://samenmeten.rivm.nl/dataportaal/" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">Bekijk dit filmpje voor meer informatie:</a></h5>
-                  <h6><a href="https://www.samenmeten.nl/zelf-meten/hoe-kan-ik-zelf-luchtkwaliteit-meten" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">Hoe kan ik zelf luchtkwaliteit meten<i class="bi bi-question-lg"></i></a></h6>
-                  <div class="embed-responsive embed-responsive-16by9">
-                    <video controls="" class="embed-responsive-item w-100 rounded">
+                  <h5>
+                    <a href="https://samenmeten.rivm.nl/dataportaal/" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">
+                      Bekijk dit filmpje
+                    </a>
+                  </h5>
+                  <h6>
+                    <a href="https://www.samenmeten.nl/zelf-meten/hoe-kan-ik-zelf-luchtkwaliteit-meten" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">
+                      Hoe kan ik zelf luchtkwaliteit meten <i class="bi bi-question-lg"></i>
+                    </a>
+                  </h6>
+                  <div class="ratio ratio-16x9">
+                    <video controls class="w-100 rounded">
                       <source src="https://www.rovid.nl/rivm/aco/2017/rivm-aco-20171017-id2nv5d79-web-hd.mp4" type="video/mp4" />
-                      Your browser does not support HTML5 video.
+                      Uw browser ondersteunt geen HTML5 video.
                     </video>
                   </div>
                 </div>
@@ -87,11 +148,17 @@
     </div>
   </div>
 
-  <button class="btn btn-light position-fixed top-50 end-0 translate-middle-y" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" data-bs-backdrop="false" style="z-index: 2;">
+  <button
+      class="btn btn-light position-fixed top-50 end-0 translate-middle-y"
+      type="button"
+      data-bs-toggle="offcanvas"
+      data-bs-target="#sidebar"
+      aria-controls="sidebar"
+      style="z-index:2;"
+  >
     <i class="bi bi-list"></i> Aanvullende informatie
   </button>
 </template>
-
 
 <script>
 export default {
@@ -109,23 +176,46 @@ export default {
         require('@/assets/car1.png')
       ],
       activeSlide: 0,
-      activeAccordion: 0,
       carouselInterval: null
     };
   },
   mounted() {
     this.startCarousel();
+    const off = this.$refs.offcanvas;
+    off.addEventListener('hidden.bs.offcanvas', this.stopCarousel);
+    off.addEventListener('shown.bs.offcanvas', this.startCarousel);
   },
   beforeUnmount() {
     clearInterval(this.carouselInterval);
+    const off = this.$refs.offcanvas;
+    off.removeEventListener('hidden.bs.offcanvas', this.stopCarousel);
+    off.removeEventListener('shown.bs.offcanvas', this.startCarousel);
   },
   methods: {
     startCarousel() {
       this.carouselInterval = setInterval(this.nextSlide, 5000);
     },
-    nextSlide() {
-      this.activeSlide = (this.activeSlide + 1) % this.images.length;
+    stopCarousel() {
+      clearInterval(this.carouselInterval);
     },
+  },
+  watch: {
+    // reset carousel when new station info arrives
+    geojson() {
+      this.activeSlide = 0;
+      this.stopCarousel();
+      this.startCarousel();
+    }
   }
 };
 </script>
+
+<style scoped>
+.carousel-item {
+  display: none;
+}
+
+.carousel-item.active {
+  display: block;
+}
+</style>
