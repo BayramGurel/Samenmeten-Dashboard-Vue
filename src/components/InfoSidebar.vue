@@ -8,12 +8,7 @@
       <div class="offcanvas-body overflow-auto position-relative">
         <div class="carousel position-absolute top-0 start-0 w-100 h-100">
           <div class="carousel-inner h-100">
-            <div
-                v-for="(src, index) in images"
-                :key="index"
-                :class="['carousel-item', { active: index === activeSlide }]"
-                class="h-100"
-            >
+            <div v-for="(src, index) in images" :key="index" :class="['carousel-item', { active: index === activeSlide }]" class="h-100">
               <img :src="src" class="d-block w-100 h-100 object-fit-cover" alt="slide" />
             </div>
           </div>
@@ -26,31 +21,16 @@
             <span class="visually-hidden">Next</span>
           </button>
         </div>
-        <div class="container-fluid position-relative" style="margin-top: 30vh;">
+        <div v-if="geojson && geojson.features" class="container-fluid position-relative" style="margin-top: 30vh;">
           <div class="row">
             <div class="accordion" id="infoAccordion">
               <div class="accordion-item">
                 <h2 class="accordion-header" id="headingOne">
-                  <button
-                      class="accordion-button text-primary-emphasis fw-semibold"
-                      :class="{ collapsed: activeAccordion !== 0 }"
-                      type="button"
-                      @click="toggleAccordion(0)"
-                      :aria-expanded="activeAccordion === 0"
-                      aria-controls="collapseOne"
-                  >
-                    <p>
-                      Gemiddelde, maximum en minimaal waarde van <b class="text-primary fw-semibold">concentration {{ formattedProperty }} nk (µg/m³)</b> van vandaag.
-                    </p>
+                  <button class="accordion-button text-primary-emphasis fw-semibold" :class="{ collapsed: activeAccordion !== 0 }" type="button" @click="toggleAccordion(0)" :aria-expanded="activeAccordion === 0" aria-controls="collapseOne">
+                    <p>Gemiddelde, maximum en minimaal waarde van <b class="text-primary fw-semibold">concentration {{ formattedProperty }} nk (µg/m³)</b> van vandaag.</p>
                   </button>
                 </h2>
-                <div
-                    id="collapseOne"
-                    class="accordion-collapse collapse"
-                    :class="{ show: activeAccordion === 0 }"
-                    aria-labelledby="headingOne"
-                    data-bs-parent="#infoAccordion"
-                >
+                <div id="collapseOne" class="accordion-collapse collapse" :class="{ show: activeAccordion === 0 }" aria-labelledby="headingOne" data-bs-parent="#infoAccordion">
                   <div class="accordion-body">
                     <div class="col-12 table-responsive overflow-auto" style="max-height: 33vh;">
                       <table class="table table-hover table-bordered">
@@ -77,24 +57,11 @@
               </div>
               <div class="accordion-item">
                 <h2 class="accordion-header" id="headingTwo">
-                  <button
-                      class="accordion-button text-primary-emphasis fw-semibold"
-                      :class="{ collapsed: activeAccordion !== 1 }"
-                      type="button"
-                      @click="toggleAccordion(1)"
-                      :aria-expanded="activeAccordion === 1"
-                      aria-controls="collapseTwo"
-                  >
+                  <button class="accordion-button text-primary-emphasis fw-semibold" :class="{ collapsed: activeAccordion !== 1 }" type="button" @click="toggleAccordion(1)" :aria-expanded="activeAccordion === 1" aria-controls="collapseTwo">
                     <p>Beschrijving van fijnstof | <span class="property text-primary">{{ formattedProperty }}</span></p>
                   </button>
                 </h2>
-                <div
-                    id="collapseTwo"
-                    class="accordion-collapse collapse"
-                    :class="{ show: activeAccordion === 1 }"
-                    aria-labelledby="headingTwo"
-                    data-bs-parent="#infoAccordion"
-                >
+                <div id="collapseTwo" class="accordion-collapse collapse" :class="{ show: activeAccordion === 1 }" aria-labelledby="headingTwo" data-bs-parent="#infoAccordion">
                   <div class="accordion-body">
                     <h6 class="description overflow-auto" v-html="description" style="max-height: 40vh;"></h6>
                   </div>
@@ -102,24 +69,11 @@
               </div>
               <div class="accordion-item">
                 <h2 class="accordion-header" id="headingThree">
-                  <button
-                      class="accordion-button text-primary-emphasis fw-semibold"
-                      :class="{ collapsed: activeAccordion !== 2 }"
-                      type="button"
-                      @click="toggleAccordion(2)"
-                      :aria-expanded="activeAccordion === 2"
-                      aria-controls="collapseThree"
-                  >
+                  <button class="accordion-button text-primary-emphasis fw-semibold" :class="{ collapsed: activeAccordion !== 2 }" type="button" @click="toggleAccordion(2)" :aria-expanded="activeAccordion === 2" aria-controls="collapseThree">
                     <p>Bekijk dit filmpje voor meer informatie</p>
                   </button>
                 </h2>
-                <div
-                    id="collapseThree"
-                    class="accordion-collapse collapse"
-                    :class="{ show: activeAccordion === 2 }"
-                    aria-labelledby="headingThree"
-                    data-bs-parent="#infoAccordion"
-                >
+                <div id="collapseThree" class="accordion-collapse collapse" :class="{ show: activeAccordion === 2 }" aria-labelledby="headingThree" data-bs-parent="#infoAccordion">
                   <div class="accordion-body">
                     <h5><a href="https://samenmeten.rivm.nl/dataportaal/" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">Bekijk dit filmpje voor meer informatie:</a></h5>
                     <h6><a href="https://www.samenmeten.nl/zelf-meten/hoe-kan-ik-zelf-luchtkwaliteit-meten" target="_blank" class="link-primary link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover">Hoe kan ik zelf luchtkwaliteit meten<i class="bi bi-question-lg"></i></a></h6>
@@ -161,24 +115,24 @@ export default {
       activeSlide: 0,
       activeAccordion: 0,
       carouselInterval: null
-    };
+    }
   },
   mounted() {
-    this.carouselInterval = setInterval(this.nextSlide, 5000);
+    this.carouselInterval = setInterval(this.nextSlide, 5000)
   },
   beforeUnmount() {
-    clearInterval(this.carouselInterval);
+    clearInterval(this.carouselInterval)
   },
   methods: {
     nextSlide() {
-      this.activeSlide = (this.activeSlide + 1) % this.images.length;
+      this.activeSlide = (this.activeSlide + 1) % this.images.length
     },
     prevSlide() {
-      this.activeSlide = (this.activeSlide - 1 + this.images.length) % this.images.length;
+      this.activeSlide = (this.activeSlide - 1 + this.images.length) % this.images.length
     },
     toggleAccordion(index) {
-      this.activeAccordion = this.activeAccordion === index ? -1 : index;
+      this.activeAccordion = this.activeAccordion === index ? -1 : index
     }
   }
-};
+}
 </script>

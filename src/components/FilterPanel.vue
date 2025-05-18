@@ -11,28 +11,58 @@
       <div class="tab-pane fade show active" id="nav-filter" role="tabpanel">
         <h3 class="py-2 text-center text-primary-emphasis border-bottom border-secondary-subtle">Filteren van stations</h3>
         <div class="row p-2">
-          <div class="accordion accordion-flush" id="filterAccordion">
-            <div class="accordion-item" v-for="(group, idx) in filterGroups" :key="idx">
-              <h2 class="accordion-header" :id="`filterHeading${idx}`">
-                <button class="accordion-button collapsed" type="button" @click="toggleFilter(idx)" :aria-expanded="activeFilter === idx" :aria-controls="`filterCollapse${idx}`">
-                  <span class="me-2 fw-medium text-primary-emphasis">{{ group.label }}</span>
-                  <span :class="{'badge rounded-pill bg-danger': group.items.filter(i=>i.checked).length===0, 'badge rounded-pill bg-primary': group.items.filter(i=>i.checked).length>0}">{{ group.items.filter(i=>i.checked).length>0?group.items.filter(i=>i.checked).length:'Geen gegevens' }}</span>
+          <div class="accordion accordion-flush" id="uniqueAccordionExample">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="uniqueHeadingOne">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#uniqueCollapseOne" aria-expanded="false" aria-controls="uniqueCollapseOne">
+                  <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Regio</span>
+                  <span :class="{'badge rounded-pill bg-danger': regio.length === 0, 'badge rounded-pill bg-primary': regio.length > 0}">{{ regio.length > 0 ? regio.length : 'Geen gegevens' }}</span>
                 </button>
               </h2>
-              <div :id="`filterCollapse${idx}`" class="accordion-collapse collapse" :class="{ show: activeFilter===idx }" :aria-labelledby="`filterHeading${idx}`" data-bs-parent="#filterAccordion">
+              <div id="uniqueCollapseOne" class="accordion-collapse collapse" aria-labelledby="uniqueHeadingOne" data-bs-parent="#uniqueAccordionExample">
                 <div class="accordion-body" style="max-height: 22vh; overflow-y: auto;">
-                  <template v-if="group.key==='station_name'">
-                    <div class="form-floating mb-2">
-                      <input type="search" v-model="search" @input="applySearch" list="stationsList" class="form-control text-primary rounded shadow-sm" id="searchStations" placeholder=" ">
-                      <label for="searchStations">Zoeken naar een station</label>
-                    </div>
-                    <datalist id="stationsList">
-                      <option v-for="item in group.items" :key="item.id" :value="item.label" />
-                    </datalist>
-                  </template>
-                  <div v-for="item in group.items" :key="item.id" class="form-check">
-                    <input type="checkbox" :id="item.id" v-model="item.checked" @change="emitUpdate" class="form-check-input">
-                    <label :for="item.id" class="form-check-label">{{ item.label }}</label>
+                  <div v-for="checkbox in regio" :key="checkbox.id" class="form-check">
+                    <input type="checkbox" :id="checkbox.id" :value="checkbox.id" v-model="checkbox.checked" @change="$emit('updateLayer')" class="form-check-input">
+                    <label :for="checkbox.id" class="form-check-label">{{ checkbox.label }}</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="uniqueHeadingTwo">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#uniqueCollapseTwo" aria-expanded="false" aria-controls="uniqueCollapseTwo">
+                  <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Gemeente</span>
+                  <span :class="{'badge rounded-pill bg-danger': gemeente.length === 0, 'badge rounded-pill bg-primary': gemeente.length > 0}">{{ gemeente.length > 0 ? gemeente.length : 'Geen gegevens' }}</span>
+                </button>
+              </h2>
+              <div id="uniqueCollapseTwo" class="accordion-collapse collapse" aria-labelledby="uniqueHeadingTwo" data-bs-parent="#uniqueAccordionExample">
+                <div class="accordion-body" style="max-height: 22vh; overflow-y: auto;">
+                  <div v-for="checkbox in gemeente" :key="checkbox.id" class="form-check">
+                    <input type="checkbox" :id="checkbox.id" :value="checkbox.id" v-model="checkbox.checked" @change="$emit('updateLayer')" class="form-check-input">
+                    <label :for="checkbox.id" class="form-check-label">{{ checkbox.label }}</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="uniqueHeadingThree">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#uniqueCollapseThree" aria-expanded="false" aria-controls="uniqueCollapseThree">
+                  <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Station</span>
+                  <span :class="{'badge rounded-pill bg-danger': stationName.length === 0, 'badge rounded-pill bg-primary': stationName.length > 0}">{{ stationName.length > 0 ? stationName.length : 'Geen gegevens' }}</span>
+                </button>
+              </h2>
+              <div id="uniqueCollapseThree" class="accordion-collapse collapse" aria-labelledby="uniqueHeadingThree" data-bs-parent="#uniqueAccordionExample">
+                <div class="accordion-body" style="max-height: 22vh; overflow-y: auto;">
+                  <div class="form-floating mb-2">
+                    <input type="search" list="stations" v-model="search" class="form-control text-primary rounded shadow-sm" id="searchStations" placeholder=" " @input="selectMatchingStations">
+                    <label for="searchStations">Zoeken naar een station</label>
+                  </div>
+                  <datalist id="stations">
+                    <option v-for="checkbox in stationName" :key="checkbox.id" :value="checkbox.label"></option>
+                  </datalist>
+                  <div v-for="checkbox in stationName" :key="checkbox.id" class="form-check">
+                    <input type="checkbox" :id="checkbox.id" :value="checkbox.id" v-model="checkbox.checked" @change="$emit('updateLayer')" class="form-check-input">
+                    <label :for="checkbox.id" class="form-check-label">{{ checkbox.label }}</label>
                   </div>
                 </div>
               </div>
@@ -48,9 +78,9 @@
               <div class="col-10 text-start">{{ interpolationText }}</div>
               <div class="col"><img :src="interpolatieLegend" class="img-fluid rounded w-auto h-75"></div>
               <div class="btn-group btn-group-sm mt-2" role="group">
-                <input type="radio" class="btn-check" name="interp" value="disable" id="disable" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
+                <input type="radio" class="btn-check" name="btnradio" value="disable" id="disable" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
                 <label class="btn btn-outline-danger" for="disable">Verbergen</label>
-                <input type="radio" class="btn-check" name="interp" value="activate" id="activate" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
+                <input type="radio" class="btn-check" name="btnradio" value="activate" id="activate" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
                 <label class="btn btn-outline-primary" for="activate">Weergeven op kaart</label>
               </div>
             </div>
@@ -70,17 +100,17 @@
             <div class="col-12 col-xl-6">
               <div class="dropdown mt-3 w-100">
                 <button class="btn btn-primary dropdown-toggle py-2 px-3 w-100 fw-medium" type="button" v-if="!isLocalFile" data-bs-toggle="dropdown">Local Bestand | Downloaden</button>
-                <button class="btn btn-danger py-2 px-3 w-100 fw-medium" v-else @click="clearLocalFile">← Terug naar server</button>
+                <button class="btn btn-danger py-2 px-3 w-100 fw-medium" v-else @click="$emit('clearInput','localFile')">← Terug naar server</button>
                 <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" @click.prevent="downloadGeoJSON">GeoJSON</a></li>
-                  <li><a class="dropdown-item" @click.prevent="downloadCSV">CSV</a></li>
+                  <li><a class="dropdown-item" @click.prevent="$emit('downloadGeoJSON')">GeoJSON</a></li>
+                  <li><a class="dropdown-item" @click.prevent="$emit('downloadCSV')">CSV</a></li>
                 </ul>
               </div>
             </div>
             <div class="col-12 col-xl-6 text-end">
               <div class="input-group mt-3 w-100">
-                <label for="fileInput" class="btn custom-file-upload rounded shadow-sm py-2 px-3 w-100 fw-medium text-truncate" :title="isLocalFile?fileName:'Uploaden | Geojson bestand'">{{ isLocalFile?fileName:'Uploaden | Geojson bestand' }}</label>
-                <input type="file" id="fileInput" class="d-none" @change="handleFileUpload">
+                <label for="inputGroupFile04" class="btn custom-file-upload rounded shadow-sm py-2 px-3 w-100 fw-medium text-truncate" data-bs-toggle="tooltip" data-bs-placement="right" :title="isLocalFile ? fileName : 'Uploaden | Geojson bestand'">{{ isLocalFile ? fileName : 'Uploaden | Geojson bestand' }}</label>
+                <input ref="localFile" type="file" id="inputGroupFile04" class="py-2 px-3 w-100" @change="$emit('updateLayer')">
               </div>
             </div>
           </div>
@@ -118,32 +148,13 @@ export default {
     toggleFilter(idx) {
       this.activeFilter = this.activeFilter === idx ? null : idx;
     },
-    applySearch() {
+    selectMatchingStations() {
       const term = this.search.toLowerCase();
-      const group = this.filterGroups.find(g => g.key === 'station_name');
-      group.items.forEach(item => { item.checked = item.label.toLowerCase() === term; });
-      this.emitUpdate();
-    },
-    emitUpdate() {
-      const selectedRegio = this.filterGroups[0].items.filter(i=>i.checked).map(i=>i.id);
-      const selectedGemeente = this.filterGroups[1].items.filter(i=>i.checked).map(i=>i.id);
-      const selectedStation = this.filterGroups[2].items.filter(i=>i.checked).map(i=>i.id);
-      this.$emit('updateLayer', { selectedRegio, selectedGemeente, selectedStation, search: this.search });
+      this.stationName.forEach(item => { item.checked = item.label.toLowerCase() === term; });
+      this.$emit('updateLayer');
     },
     emitInterpolation() {
       this.$emit('idwInterpolation', this.interpolationStatus);
-    },
-    downloadGeoJSON() {
-      this.$emit('downloadGeoJSON');
-    },
-    downloadCSV() {
-      this.$emit('downloadCSV');
-    },
-    clearLocalFile() {
-      this.$emit('clearInput', 'localFile');
-    },
-    handleFileUpload(event) {
-      this.$emit('updateLayer', { file: event.target.files[0] });
     }
   }
 };

@@ -17,7 +17,7 @@
         <div class="tab-pane fade show active" id="nav-leganda" role="tabpanel">
           <h4 class="my-2 pt-2 text-center text-primary-emphasis">Luchtkwaliteit filters & legenda <i class="bi bi-funnel"></i></h4>
           <div class="col-md-11 mx-auto form-floating">
-            <select v-model="propertyValue" class="form-select form-select-md text-primary fw-semibold text-center shadow-sm" id="floatingSelect" @change="emitUpdate" style="background: white !important;">
+            <select v-model="propertyValue" class="form-select form-select-md text-primary fw-semibold text-center shadow-sm" id="floatingSelect" @input="emitUpdate" style="background: white !important;">
               <option value="no2">Stikstofdioxide | N02</option>
               <option value="pm10">Fijnstof 10microm | PM10</option>
               <option value="pm25">Fijnstof 2.5 microm | PM2,5</option>
@@ -27,13 +27,13 @@
           <div class="row px-3 mt-2">
             <div class="col-12">
               <label for="timeSlider">Geselecteerd uur: {{ timeValue }}:00</label>
-              <input id="timeSlider" class="form-control-range w-100" type="range" min="0" max="23" step="1" v-model.number="timeValue" @input="emitUpdate" :title="`Geselecteerd uur: ${timeValue}:00`">
+              <input id="timeSlider" ref="timeSlider" class="form-control-range w-100" type="range" min="0" max="23" step="1" v-model.number="timeValue" @change="emitUpdate" @mousedown="stopSlider" :title="`Geselecteerd uur: ${timeValue}:00`">
             </div>
           </div>
           <div class="row pt-2 px-3">
             <div class="col-md-6">
               <div class="form-floating mb-2">
-                <input type="search" list="dayNamesList" v-model="selectedDay" class="form-control text-primary fw-semibold rounded shadow-sm" id="floatingInput" placeholder=" " @input="emitUpdate">
+                <input type="search" list="dayNamesList" v-model="selectedDay" class="form-control text-primary fw-semibold rounded shadow-sm" id="floatingInput" placeholder=" " @input="emitUpdate" @click="clearInput">
                 <label for="floatingInput">Selecteer een datum</label>
               </div>
               <datalist id="dayNamesList">
@@ -106,43 +106,36 @@ export default {
       return this.isPlaying ? 'btn-outline-danger' : 'btn-outline-primary';
     }
   },
-  watch: {
-    selectedDay() {
-      this.emitUpdate();
-    },
-    timeValue() {
-      this.emitUpdate();
-    },
-    propertyValue() {
-      this.emitUpdate();
-    }
-  },
   methods: {
     emitUpdate() {
       this.$emit('updateLayer', { property: this.propertyValue, time: this.timeValue, date: this.selectedDay });
     },
     toggleSlider() {
-      this.isPlaying ? this.stopSlider() : this.startSlider();
+      this.isPlaying = !this.isPlaying;
+      this.isPlaying ? this.startSlider() : this.stopSlider();
     },
     startSlider() {
       clearInterval(this.interval);
+      const today = this.dayNames[0];
+      const maxHour = this.selectedDay === today ? new Date().getHours() : 23;
+      this.timeValue = 0;
+      this.emitUpdate();
       this.isPlaying = true;
       this.interval = setInterval(() => {
-        if (this.timeValue < 23) {
+        if (this.timeValue < maxHour) {
           this.timeValue++;
+          this.emitUpdate();
         } else {
           this.stopSlider();
         }
-      }, 1000);
+      }, 1550);
     },
     stopSlider() {
       clearInterval(this.interval);
       this.isPlaying = false;
     },
-    clearInput(refName) {
-      if (refName === 'sDate') {
-        this.selectedDay = '';
-      }
+    clearInput() {
+      this.selectedDay = '';
     }
   }
 };
