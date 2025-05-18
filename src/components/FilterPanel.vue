@@ -8,10 +8,12 @@
       </div>
     </nav>
     <div class="tab-content">
+      <!-- Gegevens filteren tab -->
       <div class="tab-pane fade show active" id="nav-filter" role="tabpanel" aria-labelledby="nav-filter-tab" tabindex="0">
         <h3 class="py-2 text-center text-primary-emphasis border-bottom border-secondary-subtle">Filteren van stations</h3>
         <div class="row p-2">
           <div class="accordion accordion-flush" id="uniqueAccordionExample">
+            <!-- Regio Accordion Item -->
             <div class="accordion-item">
               <h2 class="accordion-header" id="uniqueHeadingOne">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#uniqueCollapseOne" aria-expanded="false" aria-controls="uniqueCollapseOne">
@@ -28,6 +30,7 @@
                 </div>
               </div>
             </div>
+            <!-- Gemeente Accordion Item -->
             <div class="accordion-item">
               <h2 class="accordion-header" id="uniqueHeadingTwo">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#uniqueCollapseTwo" aria-expanded="false" aria-controls="uniqueCollapseTwo">
@@ -44,16 +47,17 @@
                 </div>
               </div>
             </div>
+            <!-- Station Accordion Item -->
             <div class="accordion-item">
               <h2 class="accordion-header" id="uniqueHeadingThree">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#uniqueCollapseThree" aria-expanded="false" aria-controls="uniqueCollapseThree">
                   <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Station</span>
-                  <span :class="{'badge rounded-pill bg-danger': stationName.length === 0, 'badge rounded-pill bg-primary': stationName.length > 0}">{{ stationName.length > 0 ? stationName.length : 'Geen gegevens' }}</span>
+                  <span :class="{'badge rounded-pill bg-danger': stationName.length === 0, 'badge rounded-pill bg-primary': stationName.length > 0}">{{ stationName.length > 0 ? stationName.length : 'Geengegevens' }}</span>
                 </button>
               </h2>
               <div id="uniqueCollapseThree" class="accordion-collapse collapse" aria-labelledby="uniqueHeadingThree" data-bs-parent="#uniqueAccordionExample">
                 <div class="accordion-body" style="max-height: 22vh; overflow-y: auto;">
-                  <div class="form-floating mb-2">
+                  <div class="form-floating mb-2 focused-label">
                     <input type="search" list="stations" v-model="search" class="form-control text-primary rounded shadow-sm" id="floatingInput" placeholder=" " @input="selectMatchingStations">
                     <label for="floatingInput">Zoeken naar een station</label>
                   </div>
@@ -71,24 +75,26 @@
         </div>
       </div>
 
+      <!-- Analysis tools tab -->
       <div class="tab-pane fade" id="nav-wms" role="tabpanel" aria-labelledby="nav-wms-tab" tabindex="0">
         <div class="row p-2">
           <div class="col text-center">
             <h3 class="pb-2 text-primary border-bottom border-primary">IDW interpolatie</h3>
             <div class="row my-3">
-              <div class="col-10 text-start">{{ interpolationText }}</div>
+              <div class="col-10 text-start" v-html="interpolationText"></div>
               <div class="col"><img :src="interpolatieLegend" class="img-fluid rounded w-auto h-75"></div>
               <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="btnradio" value="disable" id="disable" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
-                <label class="btn btn-outline-danger" for="disable">Verbergen</label>
-                <input type="radio" class="btn-check" name="btnradio" value="activate" id="activate" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
-                <label class="btn btn-outline-primary" for="activate">Weergeven op kaart</label>
+                <input type="radio" class="btn-check" name="btnradio" value="disable" id="disableRadio" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
+                <label class="btn btn-outline-danger" for="disableRadio">Verbergen</label>
+                <input type="radio" class="btn-check" name="btnradio" value="activate" id="activateRadio" autocomplete="off" v-model="interpolationStatus" @change="emitInterpolation">
+                <label class="btn btn-outline-primary" for="activateRadio">Weergeven op kaart</label>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- Bestandenbeheer tab -->
       <section id="nav-bestanden" class="tab-pane fade" role="tabpanel" aria-labelledby="nav-bestanden-tab" tabindex="0">
         <div class="container p-2">
           <header class="text-center mb-2">
@@ -137,7 +143,7 @@ export default {
       search: '',
       interpolationStatus: 'disable',
       interpolatieLegend: require('@/assets/interpolatie-legenda.png'),
-      interpolationText: 'De ‘IDW Interpolatie’ is een krachtige functie die luchtkwaliteitswaarden op ongemeten locaties voorspelt, waarbij meetpunten in de nabijheid een grotere invloed hebben. Met de ‘Verbergen’ en ‘Weergeven op kaart’ opties kunt u de zichtbaarheid van deze voorspelde waarden op de kaart beheren. Houd er rekening mee dat er bij het eerste gebruik een kleine vertraging kan optreden, maar bij latere toepassingen wordt de interpolatie vloeiend weergegeven. De nauwkeurigheid van de voorspellingen is afhankelijk van de kwaliteit en spreiding van de meetpunten.'
+      interpolationText: `De ‘IDW Interpolatie’ is een krachtige functie die luchtkwaliteitswaarden op ongemeten locaties voorspelt, waarbij meetpunten in de nabijheid een grotere invloed hebben. Met de ‘Verbergen’ en ‘Weergeven op kaart’ opties kunt u de zichtbaarheid van deze voorspelde waarden op de kaart beheren. <br><br> Houd er rekening mee dat er bij het eerste gebruik een kleine vertraging kan optreden, maar bij latere toepassingen wordt de interpolatie vloeiend weergegeven. De nauwkeurigheid van de voorspellingen is afhankelijk van de kwaliteit en spreiding van de meetpunten.`
     };
   },
   methods: {
@@ -154,5 +160,9 @@ export default {
 </script>
 
 <style scoped>
-.custom-file-upload { color: #fff; background-color: #20c997; }
+.custom-file-upload { color: #fff; background-color: #20c997;}
+.custom-file-upload:hover { color: #fff; background-color: #2596be;}
+.input-group input[type="file"] {
+  display: none; /* Hide the default file input */
+}
 </style>
