@@ -70,6 +70,7 @@ import InfoSidebar from './InfoSidebar.vue'
 import ControlsPanel from './ControlsPanel.vue'
 import FilterPanel from './FilterPanel.vue'
 import { data } from '@/data/variable.js'
+
 export default {
   name: 'SamenMetenDashboard',
   components: { InfoSidebar, ControlsPanel, FilterPanel },
@@ -78,11 +79,11 @@ export default {
   },
   computed: {
     dayNames() {
-      return Array.from({ length: 30 }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        return this.formatDate(date)
-      })
+      return Array.from({length: 30}, (_, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        return this.formatDate(date);
+      });
     },
     formattedProperty() {
       const propertyMap = { pm25: 'PM2,5', pm10: 'PM10', no2: 'NO2' }
