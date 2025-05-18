@@ -108,7 +108,7 @@ export default {
   computed: {
     buttonClass() {
       return this.isPlaying ? 'btn-outline-danger' : 'btn-outline-primary';
-    }
+    },
   },
   methods: {
     emitUpdate() {

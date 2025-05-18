@@ -90,13 +90,13 @@ export default {
       });
     },
     formattedProperty() {
-      const propertyMap = { pm25: 'PM2,5', pm10: 'PM10', no2: 'NO2' }
-      return propertyMap[this.property] || this.property
+      const propertyMap = { pm25: 'PM2,5', pm10: 'PM10', no2: 'NO2' };
+      return propertyMap[this.property] || this.property;
     }
   },
   created() {
-    this.STYLE_URL = `https://api.maptiler.com/maps/dataviz/style.json?key=${this.API_KEY}`
-    this.checkHourChange()
+    this.STYLE_URL = `https://api.maptiler.com/maps/dataviz/style.json?key=${this.API_KEY}`;
+    this.checkHourChange();
   },
   async mounted() {
     document.getElementById('czoom').style.zoom = "87%";
@@ -127,16 +127,87 @@ export default {
   },
 
   methods: {
-    initializeMap() {
-      this.map = new window.maplibregl.Map({ container: 'map', style: this.STYLE_URL, center: [4.218788, 52.008663], zoom: 8.9 })
-      this.map.on('load', () => { this.addLineSourceAndLayer() })
+    async initializeMap() {
+      this.map = new window.maplibregl.Map({container: 'map', style: this.STYLE_URL, center: [4.218788, 52.008663], zoom: 8.9,});
+      this.map.on('load', () => {this.addLineSourceAndLayer();});
     },
-    addControls() {
-      this.addStyleSwitchControl()
-      this.map.addControl(new window.maplibregl.FullscreenControl())
-      this.map.addControl(new window.maplibregl.NavigationControl())
-      this.map.addControl(new window.maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }))
+
+    async addLineSourceAndLayer() {
+      if (!this.map.getSource('line')) {
+        this.map.addSource('line', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: this.bbox}}});
+      }
+      if (!this.map.getLayer('line')) {
+        this.map.addLayer({id: 'line', type: 'line', source: 'line', layout: {'line-join': 'round', 'line-cap': 'round'}, paint: {'line-color': '#ff0000', 'line-width': 1.4, 'line-opacity': 0.8, 'line-blur': 0.5}});
+      }
     },
+
+    async addControls() {
+      this.addStyleSwitchControl();
+      this.map.addControl(new window.maplibregl.FullscreenControl());
+      this.map.addControl(new window.maplibregl.NavigationControl());
+      this.map.addControl(new window.maplibregl.GeolocateControl({positionOptions: {enableHighAccuracy: true}, trackUserLocation: true}));
+    },
+
+    addStyleSwitchControl() {
+      const styleSwitcher = this.createStyleSwitcher();
+      const styleSwitchControl = this.createStyleSwitchControl(styleSwitcher);
+
+      this.map.addControl(styleSwitchControl);
+    },
+
+    createStyleSwitcher() {
+      const styleSwitcherContainer = document.createElement('div');
+      styleSwitcherContainer.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+
+      const label = document.createElement('label');
+      label.className = 'fw-semibold text-success';
+      label.innerText = 'Selecteer achtergrond:';
+      styleSwitcherContainer.appendChild(label);
+
+      const styleSwitcher = document.createElement('select');
+      styleSwitcher.className = 'form-select form-select-sm'; // Bootstrap's form control class
+      styleSwitcher.style.fontSize = '1.2em';
+      styleSwitcher.style.cursor = 'pointer';
+
+      const styles = this.STYLE_URLS.map(url => `${url}${this.API_KEY}`);
+
+      styles.forEach((style, index) => {
+        const option = document.createElement('option');
+        option.value = style;
+        option.text = this.STYLE_NAMES[index] || `Style ${index + 1}`;
+        styleSwitcher.appendChild(option);
+      });
+
+      styleSwitcher.onchange = async (event) => {
+        try {
+          this.map.setStyle(event.target.value);
+          setTimeout(() => {
+            this.updateLayer();
+            this.addLineSourceAndLayer();
+          }, 50);
+        } catch (error) {
+          console.error('An error occurred while switching styles:', error);
+        }
+      };
+
+      styleSwitcherContainer.appendChild(styleSwitcher);
+
+      return styleSwitcherContainer;
+    },
+
+    createStyleSwitchControl(styleSwitcher) {
+      return {
+        onAdd: () => {
+          return styleSwitcher;
+        },
+        onRemove: function () {
+        },
+        getDefaultPosition: function () {
+          return 'top-right';
+        },
+      };
+    },
+    //  WE LEFT OFF HEREEEEEEEEEEEEEEEE
     reloadPage() { window.location.reload() },
     clearInput(refName) {
       this.$refs[refName].value = ''
