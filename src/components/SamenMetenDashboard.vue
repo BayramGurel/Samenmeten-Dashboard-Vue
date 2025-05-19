@@ -449,9 +449,11 @@ export default {
     this.createCheckboxes('Gemeente', this.gemeentes);
     this.createCheckboxes('station_name', this.stName);
     this.selectedDay = this.dayNames[0];
-    this.updateLayer()
+    this.updateLayer();
   },
-
+  beforeUnmount() {
+    this._destroyChart();
+  },
   methods: {
     async initializeMap() {
       this.map = new window.maplibregl.Map({
@@ -499,49 +501,13 @@ export default {
       }
     },
 
-    // async addWindLayer() {
-    //   // Fetch wind data from Windy API
-    //   const response = await fetch('https://api.windy.com/api/point-forecast/v2', {
-    //     method: 'POST',
-    //     headers: {
-    //       'Content-Type': 'application/json',
-    //       'Authorization': 'WF5ugEXLNEWBKMWJoxL6tkengiCk2mak'
-    //     },
-    //     body: JSON.stringify({
-    //       lat: 51.834,
-    //       lon: 4.974,
-    //       model: 'gfs',
-    //       parameters: ['wind']
-    //     })
-    //   });
-    //
-    //   let windData;
-    //
-    //   try {
-    //     windData = await response.json();
-    //   } catch (error) {
-    //     console.error('Error parsing JSON:', error);
-    //   }
-    //
-    //   // Create and add the wind layer
-    //   this.map.on('load', () => {
-    //     this.map.addSource('wind-layer', {
-    //       type: 'raster',
-    //       tiles: [windData.tiles[0]],
-    //       tileSize: 256
-    //     });
-    //
-    //     this.map.addLayer({
-    //       id: 'wind-layer',
-    //       type: 'raster',
-    //       source: 'wind-layer',
-    //       paint: {
-    //         'raster-opacity': 1
-    //       }
-    //     });
-    //   });
-    // },
-
+    _destroyChart() {
+      if (this.myChart) {
+        this.myChart.destroy();
+        this.myChart = null;
+        console.log('chart destroyed');
+      }
+    },
 
     async addControls() {
       this.addStyleSwitchControl();
@@ -1079,6 +1045,8 @@ export default {
 
     async loadChart(properties) {
       try {
+        this._destroyChart();
+
         const url = new URL(`https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${properties.station_name}&property=${properties.property}&location=${properties.location_uuid}`);
         console.log(url)
         console.log(properties)
@@ -1086,11 +1054,6 @@ export default {
         const dataByDate = this.processData(observationData);
         const datasets = this.createDatasets(properties.property, dataByDate);
         this.$nextTick(() => {
-          if (this.myChart instanceof window.Chart) {
-            if (this.$refs.myChart) {
-              this.myChart.destroy();
-            }
-          }
           if (this.$refs.myChart) {
             this.myChart = this.createChart(this.$refs.myChart, properties.property, dataByDate, datasets);
           }
