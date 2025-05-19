@@ -4,7 +4,7 @@
 
 <script setup>
 // Import the main dashboard component
-import AirQualityDashboard from './components/SamenMetenDashboard.vue';
+import AirQualityDashboard from './components/old.vue';
 
 // Components imported in <script setup> are automatically available to the template
 // No 'components' registration needed.
