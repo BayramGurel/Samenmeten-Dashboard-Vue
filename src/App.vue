@@ -6,7 +6,7 @@
 // Import the main dashboard component
 // Make sure the path './AirQualityDashboard.vue' is correct relative to App.vue
 // import AirQualityDashboard from './components/AirQualityDashboard.vue';
-import AirQualityDashboard from './components/SamenMetenDashboard.vue';
+import AirQualityDashboard from './components/SamenMetenV2.vue';
 
 // Components imported in <script setup> are automatically available to the template
 // No 'components' registration needed.
