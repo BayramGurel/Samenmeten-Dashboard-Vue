@@ -455,6 +455,7 @@ export default {
     this._destroyChart();
   },
   methods: {
+    // done
     async initializeMap() {
       this.map = new window.maplibregl.Map({
         container: 'map',
@@ -469,6 +470,7 @@ export default {
       });
     },
 
+    // done
     async addLineSourceAndLayer() {
       if (!this.map.getSource('line')) {
         this.map.addSource('line', {
