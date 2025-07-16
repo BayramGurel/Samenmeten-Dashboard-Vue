@@ -53,8 +53,8 @@ async function initMap() {
     addRouteLayer();
     fitToRoute();
     addEventHandlers();
+    addStyleSwitchControl();  // add style switch before other controls so it appears above
     addControls();
-    addStyleSwitchControl();
   });
 }
 
