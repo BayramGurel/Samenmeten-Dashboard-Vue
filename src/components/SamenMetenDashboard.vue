@@ -44,8 +44,8 @@
           @update:regio="updateRegio"
           @update:gemeente="updateGemeente"
           @update:station-name="updateStationName"
-          @update:search="(val: string) => (search = val)"
-          @update:interpolation-status="(val: string) => (interpolationStatus = val)"
+          @update:search="updateSearch"
+          @update:interpolation-status="updateInterpolationStatus"
           @clear-input="clearInput"
           @download-geojson="downloadGeoJSON"
           @download-csv="downloadCSV"
@@ -70,7 +70,7 @@
   initialization, data fetching and DOM interactions are isolated in
   composable functions.
 -->
-<script setup lang="ts">
+<script setup>
 import {
   ref,
   reactive,
@@ -93,41 +93,41 @@ import { data as initialData } from '@/data/variable.js';
 // need to be reused across multiple components.
 
 /**
- * Type definitions for the GeoJSON structure returned by the API.
+ * @typedef {Object} FeatureProperties
+ * @property {string=} station_name
+ * @property {string=} property
+ * @property {number=} value
+ * @property {string=} unit
+ * @property {string=} Gemeente
+ * @property {string=} regio
+ * @property {string=} measured_time
+ * @property {number=} avg_value
+ * @property {number=} max_value
+ * @property {number=} min_value
+ * @property {string=} location_uuid
+ * @property {Object<string, any>=} [key]
  */
-interface FeatureProperties {
-  station_name?: string;
-  property?: string;
-  value?: number;
-  unit?: string;
-  Gemeente?: string;
-  regio?: string;
-  measured_time?: string;
-  avg_value?: number;
-  max_value?: number;
-  min_value?: number;
-  location_uuid?: string;
-  [key: string]: unknown;
-}
 
-interface Feature {
-  type: 'Feature';
-  geometry: {
-    type: string;
-    coordinates: number[] | number[][];
-  };
-  properties: FeatureProperties;
-}
+/**
+ * @typedef {Object} Feature
+ * @property {'Feature'} type
+ * @property {{ type: string, coordinates: number[]|number[][] }} geometry
+ * @property {FeatureProperties} properties
+ */
 
-interface FeatureCollection {
-  type: 'FeatureCollection';
-  features: Feature[];
-  /**
-   * Legacy API returns `Features` instead of `features`. We support both for
-   * backward compatibility.
-   */
-  Features?: Feature[];
-}
+/**
+ * @typedef {Object} FeatureCollection
+ * @property {'FeatureCollection'} type
+ * @property {Feature[]} features
+ * @property {Feature[]=} Features
+ */
+
+/**
+ * @typedef {Object} OptionItem
+ * @property {string} id
+ * @property {string} label
+ * @property {boolean} checked
+ */
 
 /**
  * Deep clone initial state to avoid mutating imported data directly.
@@ -137,29 +137,27 @@ interface FeatureCollection {
 const state = reactive(JSON.parse(JSON.stringify(initialData)));
 
 // Local reactive references
-const timeValue = ref<number>(state.timeValue ?? 0);
-const selectedDay = ref<string>('');
-const selectedProperty = ref<string>(state.property ?? 'pm25');
-const search = ref<string>(state.search ?? '');
-const interpolationStatus = ref<'disable' | 'activate'>(
-  (state.interpolationStatus as 'disable' | 'activate') ?? 'disable',
-);
-const isPlaying = ref<boolean>(state.isPlaying ?? false);
-const isLocalFile = ref<boolean>(false);
-const fileName = ref<string>('Geojson bestand | Uploaden');
-const isFrom = ref<string>('');
-const description = ref<string>('');
-const legendaValues = ref<number[]>([]);
-const concentrationValues = ref<number[]>([]);
-const geojson = ref<FeatureCollection | null>(null);
-const properties = ref<FeatureProperties>({});
-const timeString = ref<string>('');
+const timeValue = ref(state.timeValue ?? 0);
+const selectedDay = ref('');
+const selectedProperty = ref(state.property ?? 'pm25');
+const search = ref(state.search ?? '');
+const interpolationStatus = ref(state.interpolationStatus ?? 'disable');
+const isPlaying = ref(state.isPlaying ?? false);
+const isLocalFile = ref(false);
+const fileName = ref('Geojson bestand | Uploaden');
+const isFrom = ref('');
+const description = ref('');
+const legendaValues = ref([]);
+const concentrationValues = ref([]);
+const geojson = ref(null);
+const properties = ref({});
+const timeString = ref('');
 
 // Refs for collections used by filters. We wrap them in reactive arrays so that
 // changes are tracked automatically.
-const regio = ref<OptionItem[]>([]);
-const Gemeente = ref<OptionItem[]>([]);
-const stationName = ref<OptionItem[]>([]);
+const regio = ref([]);
+const Gemeente = ref([]);
+const stationName = ref([]);
 
 // Colors and names used for chart annotation. These were defined on the
 // original component's data. They remain constant.
@@ -167,29 +165,23 @@ const colors = ref(state.colors ?? []);
 const dayColors = state.dayColors ?? [];
 
 // Map related state
-const map = ref<maplibregl.Map | null>(null);
-const STYLE_URL = ref<string>('');
-const currentLayerId = ref<string | null>(null);
-const rasterLayers = new Set<string>();
+const map = ref(null);
+const STYLE_URL = ref('');
+const currentLayerId = ref(null);
+const rasterLayers = new Set();
 
 // Template refs to child components. These allow us to access exposed refs
 // without relying on DOM queries.
-const dataTools = ref<InstanceType<typeof DashboardDataTools> | null>(null);
-const stationModal = ref<InstanceType<typeof DashboardStationModal> | null>(null);
-const toastPanel = ref<InstanceType<typeof DashboardToast> | null>(null);
-
-interface OptionItem {
-  id: string;
-  label: string;
-  checked: boolean;
-}
+const dataTools = ref(null);
+const stationModal = ref(null);
+const toastPanel = ref(null);
 
 /**
  * Computed property generating an array of 30 day names. This uses the
  * `formatDate` helper to ensure the date format matches the locale. It
  * recomputes only when dependencies change, improving performance.
  */
-const dayNames = computed<string[]>(() => {
+const dayNames = computed(() => {
   return Array.from({ length: 30 }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() - i);
@@ -200,7 +192,7 @@ const dayNames = computed<string[]>(() => {
 /**
  * Computed property for determining the button style based on playback state.
  */
-const buttonClass = computed<string>(() => {
+const buttonClass = computed(() => {
   return isPlaying.value ? 'btn-outline-danger' : 'btn-outline-primary';
 });
 
@@ -208,14 +200,14 @@ const buttonClass = computed<string>(() => {
  * Map the internal property names to user‑friendly labels. If the property
  * cannot be found in the map, return it unchanged.
  */
-const formattedProperty = computed<string>(() => {
-  const propertyMap: Record<string, string> = {
+const formattedProperty = computed(() => {
+  const propertyMap = {
     pm25: 'PM2,5',
     pm10: 'PM10',
     no2: 'NO₂',
   };
   // `state.property` comes from the initial data. Provide fallback.
-  const rawProperty = (state.property ?? selectedProperty.value) as string;
+  const rawProperty = state.property ?? selectedProperty.value;
   return propertyMap[rawProperty] ?? rawProperty;
 });
 
@@ -226,50 +218,50 @@ const formattedProperty = computed<string>(() => {
  * selectedDay is set programmatically.
  */
 watch(
-    () => selectedDay.value,
-    (newDay) => {
-      if (dayNames.value.includes(newDay)) {
-        updateLayer().catch((err) => console.error('Failed to update layer', err));
-      }
+  () => selectedDay.value,
+  (newDay) => {
+    if (dayNames.value.includes(newDay)) {
+      updateLayer().catch((err) => console.error('Failed to update layer', err));
     }
+  },
 );
 
 // Refresh the layer whenever the selected hour changes. Watching the reactive
 // `timeValue` ensures that updates occur even when the slider is moved
 // programmatically. A small debounce is applied to avoid rapid consecutive
 // requests when the user drags the slider quickly.
-let timeDebounce: ReturnType<typeof setTimeout> | null = null;
+let timeDebounce = null;
 watch(
-    () => timeValue.value,
-    () => {
-      if (timeDebounce) clearTimeout(timeDebounce);
-      timeDebounce = setTimeout(() => {
-        updateLayer().catch((err) => console.error('Failed to update layer', err));
-      }, 200);
-    }
+  () => timeValue.value,
+  () => {
+    if (timeDebounce) clearTimeout(timeDebounce);
+    timeDebounce = setTimeout(() => {
+      updateLayer().catch((err) => console.error('Failed to update layer', err));
+    }, 200);
+  },
 );
 
 // Whenever the interpolation status changes, reload the layer. This ensures
 // that enabling or disabling interpolation takes effect immediately.
 watch(
-    () => interpolationStatus.value,
-    () => {
-      updateLayer().catch((err) => console.error('Failed to update layer', err));
-    }
+  () => interpolationStatus.value,
+  () => {
+    updateLayer().catch((err) => console.error('Failed to update layer', err));
+  },
 );
 
 // React to changes in the search term by selecting matching stations. We
 // debounce this watcher slightly to prevent repeated updates while the user
 // types.
-let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+let searchDebounce = null;
 watch(
-    () => search.value,
-    () => {
-      if (searchDebounce) clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(() => {
-        selectMatchingStations();
-      }, 150);
-    }
+  () => search.value,
+  () => {
+    if (searchDebounce) clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      selectMatchingStations();
+    }, 150);
+  },
 );
 
 /**
@@ -285,7 +277,7 @@ onMounted(async () => {
 
   // Fetch initial data for the dropdown lists and set up the first layer.
   geojson.value = await fetchData(
-      'https://dta-samenmeten-api.azurewebsites.net/api/data/stations'
+    'https://dta-samenmeten-api.azurewebsites.net/api/data/stations'
   );
 
   await Promise.all([
@@ -327,7 +319,7 @@ onUnmounted(() => {
  * and improve testability. The current component still contains
  * responsibilities that could live in a dedicated map management module.
  */
-async function initializeMap(): Promise<void> {
+async function initializeMap() {
   // Create the map instance
   map.value = new window.maplibregl.Map({
     container: 'map',
@@ -346,7 +338,7 @@ async function initializeMap(): Promise<void> {
  * navigation and geolocation controls. All controls are added after the map
  * instance has been created.
  */
-async function addControls(): Promise<void> {
+async function addControls() {
   if (!map.value) return;
   // Custom style switcher
   addStyleSwitchControl();
@@ -354,10 +346,10 @@ async function addControls(): Promise<void> {
   map.value.addControl(new window.maplibregl.FullscreenControl());
   map.value.addControl(new window.maplibregl.NavigationControl());
   map.value.addControl(
-      new window.maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-      })
+    new window.maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+    })
   );
 }
 
@@ -365,7 +357,7 @@ async function addControls(): Promise<void> {
  * Add a source and layer for drawing a bounding line around the map. Checks
  * for existence before adding to avoid duplicates.
  */
-function addLineSourceAndLayer(): void {
+function addLineSourceAndLayer() {
   const m = map.value;
   if (!m) return;
   if (!m.getSource('line')) {
@@ -403,7 +395,7 @@ function addLineSourceAndLayer(): void {
  * Add a wind layer to the map. This placeholder exists to match the API of
  * the original component; implement your own logic here if needed.
  */
-function addWindLayer(): void {
+function addWindLayer() {
   // TODO: Implement wind layer logic if required. Left blank for clarity.
 }
 
@@ -412,7 +404,7 @@ function addWindLayer(): void {
  * It constructs a select element populated with the available style URLs.
  * Any errors during style switching are caught and logged.
  */
-function addStyleSwitchControl(): void {
+function addStyleSwitchControl() {
   if (!map.value) return;
   // Build the control container
   const styleSwitcherContainer = document.createElement('div');
@@ -427,8 +419,8 @@ function addStyleSwitchControl(): void {
   styleSwitcher.style.cursor = 'pointer';
   // Provide an accessible name for screen readers
   styleSwitcher.setAttribute('aria-label', 'Selecteer kaartstijl');
-  const styles: string[] = (state.STYLE_URLS ?? []).map(
-      (url: string) => `${url}${state.API_KEY}`
+  const styles = (state.STYLE_URLS ?? []).map(
+    (url) => `${url}${state.API_KEY}`
   );
   styles.forEach((style, index) => {
     const option = document.createElement('option');
@@ -436,8 +428,9 @@ function addStyleSwitchControl(): void {
     option.text = state.STYLE_NAMES?.[index] ?? `Style ${index + 1}`;
     styleSwitcher.appendChild(option);
   });
-  styleSwitcher.onchange = (event: Event) => {
-    const target = event.target as HTMLSelectElement;
+  styleSwitcher.onchange = (event) => {
+    const target = event.target;
+    if (!target) return;
     try {
       map.value?.setStyle(target.value);
       // After style change, re‑add custom layers and refresh the data layer
@@ -455,15 +448,18 @@ function addStyleSwitchControl(): void {
     onAdd: () => styleSwitcherContainer,
     onRemove: () => {},
     getDefaultPosition: () => 'top-right',
-  } as maplibregl.IControl;
+  };
   map.value.addControl(control);
 }
 
 /**
  * Fetch JSON data from the given URL and return the parsed object. Errors
  * during the fetch or parsing are propagated to the caller to handle.
+ *
+ * @param {string} url
+ * @returns {Promise<FeatureCollection>}
  */
-async function fetchData(url: string): Promise<FeatureCollection> {
+async function fetchData(url) {
   const response = await fetch(url, {
     method: 'GET',
     credentials: 'include',
@@ -472,7 +468,7 @@ async function fetchData(url: string): Promise<FeatureCollection> {
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.status}`);
   }
-  return (await response.json()) as FeatureCollection;
+  return await response.json();
 }
 
 /**
@@ -480,29 +476,35 @@ async function fetchData(url: string): Promise<FeatureCollection> {
  * `geojson` to derive a set of unique values and then updates the
  * corresponding reactive array. For accessibility, items are sorted
  * alphabetically.
+ *
+ * @param {FeatureCollection | null} geo
+ * @param {string} column
  */
-async function updateUniqueItems(geo: FeatureCollection | null, column: string): Promise<void> {
-  if (!geo || !geo.Features && !geo.features) return;
-  const features = (geo.features ?? geo.Features) as Feature[];
+async function updateUniqueItems(geo, column) {
+  if (!geo || (!geo.Features && !geo.features)) return;
+  const features = geo.features ?? geo.Features;
   const items = Array.from(
-      new Set(
-          features.map((feature) => feature.properties?.[column] as string | undefined)
-      )
-  ).filter((item): item is string => !!item);
+    new Set(
+      features.map((feature) => feature.properties?.[column])
+    )
+  ).filter((item) => !!item);
   const target = column === 'regio' ? regio : column === 'Gemeente' ? Gemeente : stationName;
   // Preserve checked state if items already exist
   const checkedIds = new Set(target.value.filter((i) => i.checked).map((i) => i.id));
   target.value = items
-      .sort((a, b) => a.localeCompare(b))
-      .map((item) => ({ id: item, label: item, checked: checkedIds.has(item) }));
+    .sort((a, b) => a.localeCompare(b))
+    .map((item) => ({ id: item, label: item, checked: checkedIds.has(item) }));
 }
 
 /**
  * Create checkbox objects for the given identifier. This helper ensures that
  * each filter list (regio, Gemeente, station_name) is synchronised with
  * the array of available items. It respects the previously checked state.
+ *
+ * @param {'regio' | 'Gemeente' | 'station_name'} id
+ * @param {string[]} items
  */
-function createCheckboxes(id: 'regio' | 'Gemeente' | 'station_name', items: string[]): void {
+function createCheckboxes(id, items) {
   const target = id === 'regio' ? regio : id === 'Gemeente' ? Gemeente : stationName;
   const checkedIds = new Set(target.value.filter((i) => i.checked).map((i) => i.id));
   target.value = items.map((item) => ({
@@ -516,39 +518,68 @@ function createCheckboxes(id: 'regio' | 'Gemeente' | 'station_name', items: stri
  * Retrieve selected values from the checkboxes. This returns an array of
  * identifiers that the user has checked. When nothing is selected the
  * returned array is empty.
+ *
+ * @param {'regio' | 'Gemeente' | 'station_name'} name
+ * @returns {string[]}
  */
-function getSelectedValues(name: 'regio' | 'Gemeente' | 'station_name'): string[] {
+function getSelectedValues(name) {
   const list = name === 'regio' ? regio.value : name === 'Gemeente' ? Gemeente.value : stationName.value;
   return list.filter((item) => item.checked).map((item) => item.id);
 }
 
 /**
  * Sync checkbox option lists from child updates without mutating props.
+ *
+ * @param {OptionItem[]} list
  */
-function updateRegio(list: OptionItem[]): void {
+function updateRegio(list) {
   regio.value = list;
 }
 
-function updateGemeente(list: OptionItem[]): void {
+/**
+ * @param {OptionItem[]} list
+ */
+function updateGemeente(list) {
   Gemeente.value = list;
 }
 
-function updateStationName(list: OptionItem[]): void {
+/**
+ * @param {OptionItem[]} list
+ */
+function updateStationName(list) {
   stationName.value = list;
 }
 
 /**
- * Access the local file input exposed by the data tools component.
+ * @param {string} value
  */
-function getLocalFileInput(): HTMLInputElement | null {
+function updateSearch(value) {
+  search.value = value;
+}
+
+/**
+ * @param {string} value
+ */
+function updateInterpolationStatus(value) {
+  interpolationStatus.value = value;
+}
+
+/**
+ * Access the local file input exposed by the data tools component.
+ *
+ * @returns {HTMLInputElement | null}
+ */
+function getLocalFileInput() {
   return dataTools.value?.localFileRef?.value ?? null;
 }
 
 /**
  * Public method exposed to child components to clear input fields. For
  * `sDate` we reset the selectedDay; otherwise we call updateLayer().
+ *
+ * @param {string} refName
  */
-function clearInput(refName: string): void {
+function clearInput(refName) {
   if (refName === 'sDate') {
     selectedDay.value = '';
   } else {
@@ -567,7 +598,7 @@ function clearInput(refName: string): void {
 /**
  * Reload the page. This simply delegates to the browser's reload function.
  */
-function reloadPage(): void {
+function reloadPage() {
   window.location.reload();
 }
 
@@ -576,7 +607,7 @@ function reloadPage(): void {
  * vice versa. The slider uses a timer to advance the hour and update the
  * layer. When it reaches the maximum hour, it stops automatically.
  */
-function toggleSlider(): void {
+function toggleSlider() {
   isPlaying.value = !isPlaying.value;
   if (isPlaying.value) {
     startSlider();
@@ -585,14 +616,14 @@ function toggleSlider(): void {
   }
 }
 
-let sliderInterval: ReturnType<typeof setInterval> | null = null;
+let sliderInterval = null;
 
 /**
  * Start the time slider animation. It sets up an interval that increments
  * `timeValue` every 1.55 seconds. The maximum hour is derived from the
  * selected day (0–23 or the current hour if today).
  */
-function startSlider(): void {
+function startSlider() {
   stopSlider();
   const today = formatDate(new Date(), state.days);
   const maxHour = selectedDay.value === today ? new Date().getHours() : 23;
@@ -612,7 +643,7 @@ function startSlider(): void {
 /**
  * Stop the slider and clear the interval.
  */
-function stopSlider(): void {
+function stopSlider() {
   if (sliderInterval) {
     clearInterval(sliderInterval);
     sliderInterval = null;
@@ -623,7 +654,7 @@ function stopSlider(): void {
  * Select stations whose label matches the current search term. This sets the
  * checked state accordingly on the stationName list and refreshes the layer.
  */
-function selectMatchingStations(): void {
+function selectMatchingStations() {
   const lowerCaseSearch = search.value.toLowerCase();
   stationName.value.forEach((station) => {
     station.checked = station.label.toLowerCase() === lowerCaseSearch;
@@ -637,9 +668,11 @@ function selectMatchingStations(): void {
  * filtering and map updates. Errors are caught and logged rather than
  * thrown to the parent to avoid unhandled rejection warnings.
  */
-async function updateLayer(): Promise<void> {
+async function updateLayer() {
   // Map the selected property to the API property and update labels
-  const propDefinition = (state.propValues?.[selectedProperty.value] ?? state.propValues?.default) as any;
+  const propDefinition = state.propValues?.[selectedProperty.value]
+    ?? state.propValues?.default
+    ?? {};
   state.property = propDefinition.property;
   description.value = propDefinition.description;
   legendaValues.value = propDefinition.legendaValues ?? [];
@@ -650,12 +683,12 @@ async function updateLayer(): Promise<void> {
   const selectedStName = getSelectedValues('station_name');
   // Reload the layer with the computed values
   await reloadLayer(
-      map.value,
-      String(timeValue.value),
-      selectedProperty.value,
-      selectedRegio,
-      selectedGemeente,
-      selectedStName,
+    map.value,
+    String(timeValue.value),
+    selectedProperty.value,
+    selectedRegio,
+    selectedGemeente,
+    selectedStName,
   );
 }
 
@@ -665,30 +698,30 @@ async function updateLayer(): Promise<void> {
  * controlled when interpolation is enabled.
  */
 async function reloadLayer(
-    m: maplibregl.Map | null,
-    hour: string,
-    property: string,
-    selectedRegio: string[],
-    selectedGemeente: string[],
-    selectedStName: string[],
-): Promise<void> {
+  m,
+  hour,
+  property,
+  selectedRegio,
+  selectedGemeente,
+  selectedStName,
+) {
   if (!m) return;
   try {
     const localFiles = getLocalFileInput()?.files ?? [];
     isLocalFile.value = localFiles.length > 0;
     fileName.value = isLocalFile.value ? localFiles[0].name : 'Geojson bestand | Uploaden';
     isFrom.value = isLocalFile.value
-        ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold">van jouw Local File</span>'
-        : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata</a>. Bekijk de metadata voor details over de serverdata.';
+      ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold">van jouw Local File</span>'
+      : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata</a>. Bekijk de metadata voor details over de serverdata.';
     const selectedDateIndex = Math.max(dayNames.value.indexOf(selectedDay.value), 0);
     await filterGeojsonFeatures(
-        hour,
-        selectedDateIndex,
-        property,
-        selectedRegio,
-        selectedGemeente,
-        selectedStName,
-        isLocalFile.value,
+      hour,
+      selectedDateIndex,
+      property,
+      selectedRegio,
+      selectedGemeente,
+      selectedStName,
+      isLocalFile.value,
     );
     updateMapSourceAndLayer(m, geojson.value);
   } catch (error) {
@@ -702,24 +735,24 @@ async function reloadLayer(
  * fetches station and observation data and merges them on the station name.
  */
 async function filterGeojsonFeatures(
-    hour: string,
-    selectedDateIndex: number,
-    selectedProperty: string,
-    selectedRegio: string[],
-    selectedGemeente: string[],
-    selectedStName: string[],
-    local: boolean,
-): Promise<void> {
+  hour,
+  selectedDateIndex,
+  selectedProperty,
+  selectedRegio,
+  selectedGemeente,
+  selectedStName,
+  local,
+) {
   const now = new Date();
   now.setDate(now.getDate() - selectedDateIndex);
   // Adjust for timezone offset to match API expectations
   const date = new Date(
-      Date.UTC(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-          parseInt(hour, 10) + now.getTimezoneOffset() / 60,
-      ),
+    Date.UTC(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      parseInt(hour, 10) + now.getTimezoneOffset() / 60,
+    ),
   );
   const measuredTime = date.toISOString().replace('T', '%20').substring(0, 19) + '00';
   // When interpolation is activated call interpolation function
@@ -733,25 +766,25 @@ async function filterGeojsonFeatures(
     property: selectedProperty,
     station: selectedStName.length > 0 ? selectedStName : undefined,
     gemeente:
-        selectedStName.length > 0
-            ? undefined
-            : selectedGemeente.length > 0
-                ? selectedGemeente
-                : undefined,
+      selectedStName.length > 0
+        ? undefined
+        : selectedGemeente.length > 0
+          ? selectedGemeente
+          : undefined,
     regio:
-        selectedStName.length > 0 || selectedGemeente.length > 0
-            ? undefined
-            : selectedRegio.length > 0
-                ? selectedRegio
-                : undefined,
-  } as Record<string, string[] | string | undefined>;
-  let filtered: FeatureCollection;
+      selectedStName.length > 0 || selectedGemeente.length > 0
+        ? undefined
+        : selectedRegio.length > 0
+          ? selectedRegio
+          : undefined,
+  };
+  let filtered;
   if (local) {
     filtered = await loadLocalFile();
   } else {
     // Compose URLs with query parameters
     const urlStations = new URL(
-        'https://dta-samenmeten-api.azurewebsites.net/api/data/stations',
+      'https://dta-samenmeten-api.azurewebsites.net/api/data/stations',
     );
     Object.entries(filters).forEach(([key, value]) => {
       if (value && (Array.isArray(value) ? value.length > 0 : true)) {
@@ -759,7 +792,7 @@ async function filterGeojsonFeatures(
       }
     });
     const urlObservations = new URL(
-        `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?property=${selectedProperty}&measured_time=${measuredTime}`,
+      `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?property=${selectedProperty}&measured_time=${measuredTime}`,
     );
     // Fetch in parallel
     const [stations, observations] = await Promise.all([
@@ -767,7 +800,7 @@ async function filterGeojsonFeatures(
       fetchData(urlObservations.toString()),
     ]);
     // Build a lookup for observation by station name
-    const observationMap = new Map<string, Feature>();
+    const observationMap = new Map();
     (observations.features ?? observations.Features ?? []).forEach((observation) => {
       observationMap.set(observation.properties.station_name ?? '', observation);
     });
@@ -803,15 +836,17 @@ async function filterGeojsonFeatures(
 /**
  * Load and parse a local GeoJSON file selected by the user. The legacy API
  * expects `Features` instead of `features`, so we normalise the property.
+ *
+ * @returns {Promise<FeatureCollection>}
  */
-async function loadLocalFile(): Promise<FeatureCollection> {
+async function loadLocalFile() {
   const file = getLocalFileInput()?.files?.[0];
   if (!file) throw new Error('No local file selected');
   const text = await file.text();
-  const parsed = JSON.parse(text) as FeatureCollection;
+  const parsed = JSON.parse(text);
   if (parsed.Features) {
     parsed.features = parsed.Features;
-    delete (parsed as any).Features;
+    delete parsed.Features;
   }
   return parsed;
 }
@@ -821,7 +856,7 @@ async function loadLocalFile(): Promise<FeatureCollection> {
  * previously added layers to ensure only the current interpolation is
  * visible. The generated layer is added only once per date/property.
  */
-async function idwInterpolation(dateStr: string, property: string): Promise<void> {
+async function idwInterpolation(dateStr, property) {
   const m = map.value;
   if (!m) return;
   const bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691];
@@ -855,11 +890,14 @@ async function idwInterpolation(dateStr: string, property: string): Promise<void
  * FeatureCollection is provided it normalises the property names and
  * updates the existing source. On first call it creates the layer and
  * attaches click handlers for opening the station popup.
+ *
+ * @param {any} m
+ * @param {FeatureCollection | null} geo
  */
-function updateMapSourceAndLayer(m: maplibregl.Map, geo: FeatureCollection | null): void {
+function updateMapSourceAndLayer(m, geo) {
   if (!geo || (!geo.features && !geo.Features)) return;
   const features = geo.features ?? geo.Features;
-  const normalized: FeatureCollection = {
+  const normalized = {
     type: 'FeatureCollection',
     features: features,
   };
@@ -867,7 +905,10 @@ function updateMapSourceAndLayer(m: maplibregl.Map, geo: FeatureCollection | nul
   if (!m.getSource('stations')) {
     m.addSource('stations', { type: 'geojson', data: normalized });
   } else {
-    (m.getSource('stations') as maplibregl.GeoJSONSource).setData(normalized);
+    const source = m.getSource('stations');
+    if (source && source.setData) {
+      source.setData(normalized);
+    }
   }
   // Add layer if not present
   if (!m.getLayer('stations')) {
@@ -878,8 +919,10 @@ function updateMapSourceAndLayer(m: maplibregl.Map, geo: FeatureCollection | nul
 /**
  * Generate paint rules for the station circles based on the property and
  * value. Uses step expressions to assign colours according to breakpoints.
+ *
+ * @returns {any[]}
  */
-function getCircleColorExpression(): any[] {
+function getCircleColorExpression() {
   return [
     'case',
     ['==', ['get', 'property'], 'pm25'],
@@ -895,7 +938,7 @@ function getCircleColorExpression(): any[] {
  * the layer is clicked either a dropdown or detail popup is shown based on
  * the number of overlapping features. Popups are sanitised to prevent XSS.
  */
-function addStationsLayer(): void {
+function addStationsLayer() {
   const m = map.value;
   if (!m) return;
   m.addLayer({
@@ -916,8 +959,10 @@ function addStationsLayer(): void {
  * Handle clicks on station points. If multiple features are present at the
  * clicked point, display a dropdown to select one. Otherwise show the
  * details popup directly. Both paths sanitise user data to avoid XSS.
+ *
+ * @param {any} e
  */
-function handleStationClick(e: maplibregl.MapMouseEvent & maplibregl.EventData): void {
+function handleStationClick(e) {
   const m = map.value;
   if (!m) return;
   const features = m.queryRenderedFeatures(e.point, { layers: ['stations'] });
@@ -932,11 +977,11 @@ function handleStationClick(e: maplibregl.MapMouseEvent & maplibregl.EventData):
  * Create a dropdown popup listing multiple overlapping stations. The user can
  * pick one and then see details. The popup content is built with
  * sanitisation by escaping text values.
+ *
+ * @param {any[]} features
+ * @param {any} e
  */
-function createDropdownPopup(
-    features: maplibregl.MapboxGeoJSONFeature[],
-    e: maplibregl.MapMouseEvent & maplibregl.EventData,
-): void {
+function createDropdownPopup(features, e) {
   const m = map.value;
   if (!m) return;
   // Build HTML string for dropdown. Escape station names to prevent XSS.
@@ -953,10 +998,10 @@ function createDropdownPopup(
           <div class="dropdown-menu" aria-labelledby="stationSelect" style="height: 200px; overflow-y: auto;">
   `;
   features.forEach((feature, index) => {
-    const props = feature.properties as FeatureProperties;
+    const props = feature.properties ?? {};
     const station = String(props.station_name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const value = props.value as number;
-    const color = getColor(value, props.property ?? '', '1');
+    const value = props.value;
+    const color = getColor(value ?? 0, props.property ?? '', '1');
     dropdownHTML += `
       <a class="dropdown-item" href="#" data-index="${index}">
         <i class="bi bi-geo-alt-fill" style="color: ${color};"></i> ${station}
@@ -969,16 +1014,16 @@ function createDropdownPopup(
     </div>
   `;
   const popup = new window.maplibregl.Popup({ className: 'my-popup' })
-      .setLngLat(e.lngLat)
-      .setHTML(dropdownHTML)
-      .addTo(m);
+    .setLngLat(e.lngLat)
+    .setHTML(dropdownHTML)
+    .addTo(m);
   // After DOM insertion attach click listeners
   nextTick(() => {
     const items = Array.from(popup.getElement().querySelectorAll('.dropdown-item'));
     items.forEach((item) => {
       item.addEventListener('click', (ev) => {
         ev.preventDefault();
-        const index = Number((ev.currentTarget as HTMLElement).dataset.index);
+        const index = Number(ev.currentTarget?.dataset?.index ?? 0);
         popup.remove();
         createDetailPopup(features[index], e);
       });
@@ -990,14 +1035,14 @@ function createDropdownPopup(
  * Create a detailed popup for a single station. It displays the station's
  * name, property value, location and last update time. A button triggers
  * loading of the historical chart in a modal. User content is escaped.
+ *
+ * @param {any} feature
+ * @param {any} e
  */
-function createDetailPopup(
-    feature: maplibregl.MapboxGeoJSONFeature,
-    e: maplibregl.MapMouseEvent & maplibregl.EventData,
-): void {
+function createDetailPopup(feature, e) {
   const m = map.value;
   if (!m) return;
-  const props = feature.properties as FeatureProperties;
+  const props = feature.properties ?? {};
   properties.value = props;
   // Escape values
   const stationNameEsc = String(props.station_name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1007,16 +1052,16 @@ function createDetailPopup(
   const gemeenteEsc = String(props.Gemeente ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const regioEsc = String(props.regio ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const formattedDate = props.measured_time
-      ? new Date(props.measured_time).toLocaleString('nl-NL', {
-        timeZone: 'GMT',
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-      : 'Onbekend';
+    ? new Date(props.measured_time).toLocaleString('nl-NL', {
+      timeZone: 'GMT',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+    : 'Onbekend';
   const color = getColor(props.value ?? 0, props.property ?? '', '1');
   const popupHtml = `
     <div class="card text-center" style="border-color: ${color};">
@@ -1030,28 +1075,28 @@ function createDetailPopup(
           <small class="text-muted">Laatst update: ${formattedDate}</small>
         </h6>
         <button class="btn mt-3" type="button" data-bs-toggle="modal" data-bs-target="#modalWithBothOptions" style="background-color: ${color}; color: white;" data-properties='${encodeURIComponent(
-      JSON.stringify(props),
-  )}'>
+          JSON.stringify(props),
+        )}'>
           Informatie over station
         </button>
       </div>
     </div>
   `;
   const popup = new window.maplibregl.Popup({ className: 'my-popup' })
-      .setLngLat(e.lngLat)
-      .setHTML(popupHtml)
-      .addTo(m);
+    .setLngLat(e.lngLat)
+    .setHTML(popupHtml)
+    .addTo(m);
   // Attach click event to load chart
   nextTick(() => {
     const button = popup.getElement().querySelector('button');
     if (button) {
       button.addEventListener('click', async () => {
-        (button as HTMLButtonElement).innerHTML =
-            '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">Loading...</span>';
+        button.innerHTML =
+          '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">Loading...</span>';
         try {
           await loadChart(props);
         } finally {
-          (button as HTMLButtonElement).innerHTML = 'Informatie over station';
+          button.innerHTML = 'Informatie over station';
           popup.remove();
         }
       });
@@ -1063,10 +1108,10 @@ function createDetailPopup(
  * Destroy the existing chart instance if present. Use this before creating
  * a new chart to avoid memory leaks.
  */
-function destroyChart(): void {
-  if ((state as any).myChart) {
-    (state as any).myChart.destroy();
-    (state as any).myChart = null;
+function destroyChart() {
+  if (state.myChart) {
+    state.myChart.destroy();
+    state.myChart = null;
   }
 }
 
@@ -1079,14 +1124,16 @@ function destroyChart(): void {
  * service module (e.g. `useChart`) to encapsulate data processing and chart
  * configuration. This would make the main component leaner and facilitate
  * unit testing of chart logic.
+ *
+ * @param {FeatureProperties} props
  */
-async function loadChart(props: FeatureProperties): Promise<void> {
+async function loadChart(props) {
   destroyChart();
   try {
     const url = new URL(
-        `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${encodeURIComponent(
-            props.station_name ?? '',
-        )}&property=${encodeURIComponent(props.property ?? '')}&location=${encodeURIComponent(props.location_uuid ?? '')}`,
+      `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${encodeURIComponent(
+        props.station_name ?? '',
+      )}&property=${encodeURIComponent(props.property ?? '')}&location=${encodeURIComponent(props.location_uuid ?? '')}`,
     );
     const observationData = await fetchData(url.toString());
     const dataByDate = processData(observationData);
@@ -1106,9 +1153,12 @@ async function loadChart(props: FeatureProperties): Promise<void> {
 /**
  * Convert observation FeatureCollection into a map keyed by date. Each
  * entry holds arrays of times and corresponding values per hour.
+ *
+ * @param {FeatureCollection} observationData
+ * @returns {Record<string, { times: string[], values: (number | null)[] }>}
  */
-function processData(observationData: FeatureCollection): Record<string, { times: string[]; values: (number | null)[] }> {
-  const dataByDate: Record<string, { times: string[]; values: (number | null)[] }> = {};
+function processData(observationData) {
+  const dataByDate = {};
   (observationData.features ?? observationData.Features ?? []).forEach((feature) => {
     const dateObj = new Date(feature.properties.measured_time ?? '');
     const dateString = dateObj.toISOString().split('T')[0];
@@ -1119,7 +1169,7 @@ function processData(observationData: FeatureCollection): Record<string, { times
         values: Array(24).fill(null),
       };
     }
-    dataByDate[dateString].values[hourIndex] = feature.properties.value as number;
+    dataByDate[dateString].values[hourIndex] = feature.properties.value;
   });
   return dataByDate;
 }
@@ -1127,50 +1177,51 @@ function processData(observationData: FeatureCollection): Record<string, { times
 /**
  * Create chart datasets from processed data. Assign colours based on the
  * property and day of week. The most recent day is visible by default.
+ *
+ * @param {string} property
+ * @param {Record<string, { times: string[], values: (number | null)[] }>} dataByDate
+ * @returns {any[]}
  */
-function createDatasets(
-    property: string,
-    dataByDate: Record<string, { times: string[]; values: (number | null)[] }>,
-): any[] {
+function createDatasets(property, dataByDate) {
   const keys = Object.keys(dataByDate);
   return keys
-      .map((date, index) => {
-        const { values } = dataByDate[date];
-        const backgroundColors = values.map((val) => getColor(val ?? 0, property, '0.4'));
-        const dateObj = new Date(date);
-        return {
-          label: dateObj.toLocaleDateString('nl-NL', {
-            weekday: 'long',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-          }),
-          dateString: date,
-          data: values,
-          originalBackgroundColor: [...backgroundColors],
-          backgroundColor: backgroundColors,
-          borderColor: dayColors[dateObj.getDay()],
-          borderWidth: 2,
-          borderRadius: { topLeft: 3, topRight: 3 },
-          hidden: index !== keys.length - 1,
-        };
-      })
-      .sort((a, b) => new Date(a.dateString).getTime() - new Date(b.dateString).getTime());
+    .map((date, index) => {
+      const { values } = dataByDate[date];
+      const backgroundColors = values.map((val) => getColor(val ?? 0, property, '0.4'));
+      const dateObj = new Date(date);
+      return {
+        label: dateObj.toLocaleDateString('nl-NL', {
+          weekday: 'long',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }),
+        dateString: date,
+        data: values,
+        originalBackgroundColor: [...backgroundColors],
+        backgroundColor: backgroundColors,
+        borderColor: dayColors[dateObj.getDay()],
+        borderWidth: 2,
+        borderRadius: { topLeft: 3, topRight: 3 },
+        hidden: index !== keys.length - 1,
+      };
+    })
+    .sort((a, b) => new Date(a.dateString).getTime() - new Date(b.dateString).getTime());
 }
 
 /**
  * Instantiate a Chart.js bar chart using the provided datasets and options. It
  * registers hover handlers to adjust opacity on legend hover for improved
  * interactivity.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {string} property
+ * @param {Record<string, { times: string[], values: (number | null)[] }>} dataByDate
+ * @param {any[]} datasets
  */
-function createChart(
-    canvas: HTMLCanvasElement,
-    property: string,
-    dataByDate: Record<string, { times: string[]; values: (number | null)[] }>,
-    datasets: any[],
-): void {
+function createChart(canvas, property, dataByDate, datasets) {
   const yMin = property === 'pm25' ? 25 : 40;
-  (state as any).myChart = new window.Chart(canvas, {
+  state.myChart = new window.Chart(canvas, {
     type: 'bar',
     data: {
       labels: dataByDate[Object.keys(dataByDate)[0]].times,
@@ -1197,8 +1248,8 @@ function createChart(
         },
         legend: {
           display: true,
-          onHover: (evt: any, item: any, legend: any) => handleHover(evt, item, legend),
-          onLeave: (evt: any, item: any, legend: any) => handleLeave(evt, item, legend),
+          onHover: (evt, item, legend) => handleHover(evt, item, legend),
+          onLeave: (evt, item, legend) => handleLeave(evt, item, legend),
         },
       },
     },
@@ -1209,19 +1260,19 @@ function createChart(
  * Handle hover on legend items by adjusting bar opacities. All datasets are
  * darkened except the hovered one which becomes more opaque.
  */
-function handleHover(evt: any, item: any, legend: any): void {
-  legend.chart.data.datasets.forEach((dataset: any, datasetIndex: number) => {
+function handleHover(evt, item, legend) {
+  legend.chart.data.datasets.forEach((dataset, datasetIndex) => {
     dataset.backgroundColor = datasetIndex === item.datasetIndex
-        ? dataset.originalBackgroundColor.map((color: string) => {
-          const rgba = color.slice(0, -1).split(',');
-          rgba[3] = '0.8)';
-          return rgba.join(',');
-        })
-        : dataset.originalBackgroundColor.map((color: string) => {
-          const rgba = color.slice(0, -1).split(',');
-          rgba[3] = '0.1)';
-          return rgba.join(',');
-        });
+      ? dataset.originalBackgroundColor.map((color) => {
+        const rgba = color.slice(0, -1).split(',');
+        rgba[3] = '0.8)';
+        return rgba.join(',');
+      })
+      : dataset.originalBackgroundColor.map((color) => {
+        const rgba = color.slice(0, -1).split(',');
+        rgba[3] = '0.1)';
+        return rgba.join(',');
+      });
   });
   legend.chart.update();
 }
@@ -1229,8 +1280,8 @@ function handleHover(evt: any, item: any, legend: any): void {
 /**
  * Reset dataset opacities when the cursor leaves the legend.
  */
-function handleLeave(evt: any, item: any, legend: any): void {
-  legend.chart.data.datasets.forEach((dataset: any) => {
+function handleLeave(evt, item, legend) {
+  legend.chart.data.datasets.forEach((dataset) => {
     dataset.backgroundColor = dataset.originalBackgroundColor;
   });
   legend.chart.update();
@@ -1245,11 +1296,12 @@ function handleLeave(evt: any, item: any, legend: any): void {
  * TODO: This helper could be extracted into a shared utils module if colour
  * mapping is required in other components.
  *
- * @param value The measured pollutant value.
- * @param property The pollutant type (pm25, pm10, no2).
- * @param alpha A string representing the alpha channel (0-1).
+ * @param {number} value The measured pollutant value.
+ * @param {string} property The pollutant type (pm25, pm10, no2).
+ * @param {string} alpha A string representing the alpha channel (0-1).
+ * @returns {string}
  */
-function getColor(value: number, property: string, alpha: string): string {
+function getColor(value, property, alpha) {
   const thresholds = property === 'pm25' ? [8.3, 16.7, 25, Infinity] : [13.3, 26.6, 40, Infinity];
   const palette = [
     'rgba(30, 144, 255,',
@@ -1270,10 +1322,11 @@ function getColor(value: number, property: string, alpha: string): string {
  * TODO: This helper could be extracted into a shared utils module if date
  * formatting is required elsewhere.
  *
- * @param date The date to format.
- * @param days A seven‑element array of day names starting with Sunday.
+ * @param {Date} date The date to format.
+ * @param {string[]} days A seven‑element array of day names starting with Sunday.
+ * @returns {string}
  */
-function formatDate(date: Date, days: string[]): string {
+function formatDate(date, days) {
   const dayName = days[date.getDay()];
   const dateString = date.toLocaleDateString('nl-NL', {
     day: 'numeric',
@@ -1284,18 +1337,13 @@ function formatDate(date: Date, days: string[]): string {
 }
 
 /**
- * Map a numeric value to a colour with the given alpha. The thresholds
- * differ for pm25 vs pm10/no2. Returns a valid rgba string.
- */
-
-/**
  * Show a toast notification and update the displayed time. This uses the
  * Bootstrap Toast API exposed on the DashboardToast component.
  */
-function toast(): void {
+function toast() {
   const toastElement = toastPanel.value?.toastRef?.value;
   if (!toastElement) return;
-  const toastInstance = (window.bootstrap.Toast as any).getOrCreateInstance(toastElement);
+  const toastInstance = window.bootstrap.Toast.getOrCreateInstance(toastElement);
   const now = new Date();
   timeString.value = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
   toastInstance.show();
@@ -1304,7 +1352,7 @@ function toast(): void {
 /**
  * Download the current GeoJSON as a file. Shows a toast when complete.
  */
-function downloadGeoJSON(): void {
+function downloadGeoJSON() {
   if (!geojson.value) return;
   const dataStr = JSON.stringify(geojson.value);
   const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
@@ -1321,7 +1369,7 @@ function downloadGeoJSON(): void {
  * Download the current data as a CSV file. Missing values are marked as
  * 'N/A'. A toast is shown after download begins.
  */
-function downloadCSV(): void {
+function downloadCSV() {
   if (!geojson.value) return;
   const header = 'Station naam;Datum en tijd;Property;Regio;Gemeente;Value;Unit\n';
   let csv = header;
@@ -1329,8 +1377,8 @@ function downloadCSV(): void {
     const props = feature.properties;
     const stationNameStr = props.station_name ?? 'N/A';
     const measuredTime = props.measured_time
-        ? new Date(props.measured_time).toISOString()
-        : 'N/A';
+      ? new Date(props.measured_time).toISOString()
+      : 'N/A';
     const propertyStr = props.property ?? 'N/A';
     const regioStr = props.regio ?? 'N/A';
     const gemeenteStr = props.Gemeente ?? 'N/A';
