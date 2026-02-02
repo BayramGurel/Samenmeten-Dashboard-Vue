@@ -246,7 +246,7 @@ interface FeatureCollection {
 
 // Define props accepted by this component. Destructure them via setup script.
 const props = defineProps<{
-  geojson: FeatureCollection;
+  geojson: FeatureCollection | null;
   formattedProperty: string;
   description: string;
 }>();

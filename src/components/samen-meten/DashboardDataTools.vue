@@ -64,7 +64,7 @@
                     aria-controls="uniqueCollapseOne"
                 >
                   <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Regio</span>
-                  <span :class="getBadgeClass(props.regio)">
+                  <span :class="getBadgeClass(regioOptions)">
                     {{ regioBadge }}
                   </span>
                 </button>
@@ -77,7 +77,7 @@
               >
                 <div class="accordion-body" style="max-height: 22vh; overflow-y: auto;">
                   <div
-                      v-for="checkbox in props.regio"
+                      v-for="checkbox in regioOptions"
                       :key="checkbox.id"
                       class="form-check"
                   >
@@ -86,8 +86,8 @@
                         :id="checkbox.id"
                         :value="checkbox.id"
                         name="regio"
-                        v-model="checkbox.checked"
-                        @input="emitUpdateLayer"
+                        :checked="checkbox.checked"
+                        @change="(event) => onToggle('regio', checkbox.id, event)"
                         class="form-check-input"
                     />
                     <label :for="checkbox.id" class="form-check-label">
@@ -109,7 +109,7 @@
                     aria-controls="uniqueCollapseTwo"
                 >
                   <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Gemeente</span>
-                  <span :class="getBadgeClass(props.gemeente)">
+                  <span :class="getBadgeClass(gemeenteOptions)">
                     {{ gemeenteBadge }}
                   </span>
                 </button>
@@ -122,7 +122,7 @@
               >
                 <div class="accordion-body" style="max-height: 22vh; overflow-y: auto;">
                   <div
-                      v-for="checkbox in props.gemeente"
+                      v-for="checkbox in gemeenteOptions"
                       :key="checkbox.id"
                       class="form-check"
                   >
@@ -131,8 +131,8 @@
                         :id="checkbox.id"
                         :value="checkbox.id"
                         name="Gemeente"
-                        v-model="checkbox.checked"
-                        @input="emitUpdateLayer"
+                        :checked="checkbox.checked"
+                        @change="(event) => onToggle('gemeente', checkbox.id, event)"
                         class="form-check-input"
                     />
                     <label :for="checkbox.id" class="form-check-label">
@@ -154,7 +154,7 @@
                     aria-controls="uniqueCollapseThree"
                 >
                   <span class="me-2 fw-medium text-primary-emphasis">Selecteer een Station</span>
-                  <span :class="getBadgeClass(props.stationName)">
+                  <span :class="getBadgeClass(stationOptions)">
                     {{ stationBadge }}
                   </span>
                 </button>
@@ -182,13 +182,13 @@
                   </div>
                   <datalist id="stations">
                     <option
-                        v-for="checkbox in props.stationName"
+                        v-for="checkbox in stationOptions"
                         :key="checkbox.id"
                         :value="checkbox.label"
                     ></option>
                   </datalist>
                   <div
-                      v-for="checkbox in props.stationName"
+                      v-for="checkbox in stationOptions"
                       :key="checkbox.id"
                       class="form-check"
                   >
@@ -197,8 +197,8 @@
                         :id="checkbox.id"
                         :value="checkbox.id"
                         name="station_name"
-                        v-model="checkbox.checked"
-                        @input="emitUpdateLayer"
+                        :checked="checkbox.checked"
+                        @change="(event) => onToggle('stationName', checkbox.id, event)"
                         class="form-check-input"
                     />
                     <label :for="checkbox.id" class="form-check-label">
@@ -353,7 +353,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, defineProps, defineEmits } from 'vue';
+import { ref, watch, computed, defineProps, defineEmits, defineExpose } from 'vue';
 
 /**
  * Represents a single checkbox option (e.g. regio, gemeente, station). Each
@@ -365,6 +365,10 @@ interface OptionItem {
   checked: boolean;
 }
 
+type OptionGroup = 'regio' | 'gemeente' | 'stationName';
+
+type InterpolationStatus = 'disable' | 'activate';
+
 // Define component props with full type information. This allows consumers
 // of the component to see what data they must provide and enables better
 // intellisense in editors.
@@ -373,7 +377,7 @@ const props = defineProps<{
   gemeente: OptionItem[];
   stationName: OptionItem[];
   search: string;
-  interpolationStatus: string;
+  interpolationStatus: InterpolationStatus;
   isLocalFile: boolean;
   fileName: string;
 }>();
@@ -385,10 +389,47 @@ const emit = defineEmits<{
   (e: 'select-matching-stations'): void;
   (e: 'update:search', value: string): void;
   (e: 'update:interpolationStatus', value: string): void;
+  (e: 'update:regio', value: OptionItem[]): void;
+  (e: 'update:gemeente', value: OptionItem[]): void;
+  (e: 'update:stationName', value: OptionItem[]): void;
   (e: 'clear-input', refName: string): void;
   (e: 'download-geojson'): void;
   (e: 'download-csv'): void;
 }>();
+
+/**
+ * Local copies of the option lists to avoid mutating props directly. These
+ * lists emit updates to the parent whenever a checkbox is toggled.
+ */
+const regioOptions = ref<OptionItem[]>([]);
+const gemeenteOptions = ref<OptionItem[]>([]);
+const stationOptions = ref<OptionItem[]>([]);
+
+function cloneOptions(options: OptionItem[]): OptionItem[] {
+  return options.map((option) => ({ ...option }));
+}
+
+watch(
+    () => props.regio,
+    (val) => {
+      regioOptions.value = cloneOptions(val);
+    },
+    { immediate: true, deep: true },
+);
+watch(
+    () => props.gemeente,
+    (val) => {
+      gemeenteOptions.value = cloneOptions(val);
+    },
+    { immediate: true, deep: true },
+);
+watch(
+    () => props.stationName,
+    (val) => {
+      stationOptions.value = cloneOptions(val);
+    },
+    { immediate: true, deep: true },
+);
 
 /**
  * Reactive search field value. We mirror the incoming prop value so that
@@ -445,13 +486,13 @@ watch(
  * options or a placeholder when no data is available.
  */
 const regioBadge = computed(() =>
-    props.regio.length > 0 ? props.regio.length.toString() : 'Geen gegevens',
+    regioOptions.value.length > 0 ? regioOptions.value.length.toString() : 'Geen gegevens',
 );
 const gemeenteBadge = computed(() =>
-    props.gemeente.length > 0 ? props.gemeente.length.toString() : 'Geen gegevens',
+    gemeenteOptions.value.length > 0 ? gemeenteOptions.value.length.toString() : 'Geen gegevens',
 );
 const stationBadge = computed(() =>
-    props.stationName.length > 0 ? props.stationName.length.toString() : 'Geen gegevens',
+    stationOptions.value.length > 0 ? stationOptions.value.length.toString() : 'Geen gegevens',
 );
 
 /**
@@ -475,7 +516,7 @@ function onSearchInput(event: Event): void {
  * Handler for radio button changes in the interpolation section. Update the
  * local interpolation value which will cascade through watchers.
  */
-function onInterpolationChange(value: string): void {
+function onInterpolationChange(value: InterpolationStatus): void {
   interpolationValue.value = value;
 }
 
@@ -489,10 +530,38 @@ function emitUpdateLayer(): void {
 }
 
 /**
+ * Handle checkbox toggles without mutating prop data. Updates the local list,
+ * emits the updated list to the parent, and requests a layer refresh.
+ */
+function onToggle(group: OptionGroup, id: string, event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked;
+  const list =
+      group === 'regio'
+          ? regioOptions
+          : group === 'gemeente'
+              ? gemeenteOptions
+              : stationOptions;
+  const nextList = list.value.map((option) =>
+      option.id === id ? { ...option, checked } : option,
+  );
+  list.value = nextList;
+  if (group === 'regio') {
+    emit('update:regio', nextList);
+  } else if (group === 'gemeente') {
+    emit('update:gemeente', nextList);
+  } else {
+    emit('update:stationName', nextList);
+  }
+  emit('update-layer');
+}
+
+/**
  * Provide a ref for the local file input. The parent can reset this input
  * via the clear-input event.
  */
 const localFileRef = ref<HTMLInputElement | null>(null);
+
+defineExpose({ localFileRef });
 </script>
 
 <style scoped>

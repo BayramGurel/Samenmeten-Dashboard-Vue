@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineProps } from 'vue';
+import { ref, defineProps, defineExpose } from 'vue';
 
 /**
  * Represents a subset of station properties required by the modal. Extend this
@@ -75,9 +75,9 @@ const props = defineProps<{
 // and destroying the Chart.js instance, using this ref to access the canvas.
 const chartRef = ref<HTMLCanvasElement | null>(null);
 
-// Export the chart reference so that the parent can access it via the
+// Expose the chart reference so that the parent can access it via the
 // component's instance (e.g. using `ref="stationModal"`).
-export { chartRef };
+defineExpose({ chartRef });
 
 // Note: No additional logic is handled in this modal. Data binding and chart
 // management should be handled by the parent component. Consider moving
