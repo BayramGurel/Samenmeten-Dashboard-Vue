@@ -63,15 +63,15 @@
         <!-- Sensor type selection -->
         <div class="col-md-11 mx-auto form-floating">
           <select
-              ref="propertyRef"
               class="form-select form-select-md text-primary fw-semibold text-center shadow-sm"
               id="floatingSelect"
               style="background: white !important;"
-              @input="emitUpdateLayer"
+              :value="selectedPropertyLocal"
+              @change="onPropertyChange"
           >
             <option class="fw-semibold" value="no2">Stikstofdioxide | NO₂</option>
             <option class="fw-semibold" value="pm10">Fijnstof 10 µm | PM10</option>
-            <option class="fw-semibold" value="pm25" selected>Fijnstof 2.5 µm | PM2,5</option>
+            <option class="fw-semibold" value="pm25">Fijnstof 2.5 µm | PM2,5</option>
           </select>
           <label for="floatingSelect">Selecteer een type sensordata</label>
         </div>
@@ -81,7 +81,6 @@
             <label for="timeSlider">Geselecteerd uur: {{ timeValueLocal }}:00</label>
             <input
                 id="timeSlider"
-                ref="timeSliderRef"
                 class="form-control-range w-100"
                 type="range"
                 min="0"
@@ -108,7 +107,6 @@
                   @input="onDayInput"
                   @click="() => emit('clear-input', 'sDate')"
                   id="floatingDayInput"
-                  ref="sDateRef"
               />
               <label for="floatingDayInput">Selecteer een datum</label>
             </div>
@@ -222,6 +220,7 @@ import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 const props = defineProps<{
   timeValue: number | string;
   selectedDay: string;
+  selectedProperty: string;
   dayNames: string[];
   isPlaying: boolean;
   buttonClass: string;
@@ -244,6 +243,7 @@ const emit = defineEmits<{
   (e: 'clear-input', field: string): void;
   (e: 'update:timeValue', value: number | string): void;
   (e: 'update:selectedDay', value: string): void;
+  (e: 'update:selectedProperty', value: string): void;
 }>();
 
 /**
@@ -291,20 +291,19 @@ const playIconClass = computed(() =>
 const playButtonText = computed(() => (props.isPlaying ? 'Pauzeren' : 'Afspelen'));
 
 /**
- * References to DOM elements. Exposed for potential parent interactions via
- * ref forwards (e.g. to reset values). Note: propertyRef, timeSliderRef and
- * sDateRef correspond to elements in the template.
+ * Local reactive copy of the selected property (pm25/pm10/no2). This avoids
+ * directly mutating props and emits updates to the parent when changed.
  */
-const propertyRef = ref<HTMLSelectElement | null>(null);
-const timeSliderRef = ref<HTMLInputElement | null>(null);
-const sDateRef = ref<HTMLInputElement | null>(null);
-
-// TODO: The property select currently communicates its value to the parent via
-// a ref (propertyRef) and the parent queries it directly. For better
-// transparency and type safety, consider converting the sensor type into a
-// v-model (e.g. via a prop and emit) similar to timeValueLocal and
-// selectedDayLocal. This would decouple the parent from directly accessing
-// the child's DOM.
+const selectedPropertyLocal = ref(props.selectedProperty);
+watch(
+    () => props.selectedProperty,
+    (val) => {
+      selectedPropertyLocal.value = val;
+    },
+);
+watch(selectedPropertyLocal, (val) => {
+  emit('update:selectedProperty', val);
+});
 
 /**
  * Computed property returning the logo path. Using require() in computed
@@ -337,6 +336,15 @@ function onTimeInput(event: Event): void {
 function onDayInput(event: Event): void {
   const target = event.target as HTMLInputElement;
   selectedDayLocal.value = target.value;
+}
+
+/**
+ * Handle property selection changes and trigger a layer update.
+ */
+function onPropertyChange(event: Event): void {
+  const target = event.target as HTMLSelectElement;
+  selectedPropertyLocal.value = target.value;
+  emit('update-layer');
 }
 </script>
 

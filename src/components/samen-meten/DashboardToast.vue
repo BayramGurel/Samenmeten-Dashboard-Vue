@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, ref } from 'vue';
+import { defineProps, ref, defineExpose } from 'vue';
 
 /**
  * Props accepted by DashboardToast. Only a timestamp string is required. A
@@ -51,8 +51,8 @@ const props = defineProps<{
  */
 const toastRef = ref<HTMLDivElement | null>(null);
 
-// Export the ref to allow the parent to manipulate the toast directly
-export { toastRef };
+// Expose the ref to allow the parent to manipulate the toast directly
+defineExpose({ toastRef });
 
 // TODO: Consider converting this component into a more generic toast that
 // accepts message and variant props, and exposes a method for showing

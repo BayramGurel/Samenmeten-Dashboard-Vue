@@ -11,9 +11,9 @@
     <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
       <!-- Legend and time slider controls -->
       <DashboardLegendTabs
-          ref="legendTabs"
           v-model:timeValue="timeValue"
           v-model:selectedDay="selectedDay"
+          v-model:selectedProperty="selectedProperty"
           :day-names="dayNames"
           :is-playing="isPlaying"
           :button-class="buttonClass"
@@ -41,8 +41,11 @@
           :file-name="fileName"
           @update-layer="updateLayer"
           @select-matching-stations="selectMatchingStations"
+          @update:regio="updateRegio"
+          @update:gemeente="updateGemeente"
+          @update:station-name="updateStationName"
           @update:search="(val: string) => (search = val)"
-          @update:interpolationStatus="(val: string) => (interpolationStatus = val)"
+          @update:interpolation-status="(val: string) => (interpolationStatus = val)"
           @clear-input="clearInput"
           @download-geojson="downloadGeoJSON"
           @download-csv="downloadCSV"
@@ -100,6 +103,10 @@ interface FeatureProperties {
   Gemeente?: string;
   regio?: string;
   measured_time?: string;
+  avg_value?: number;
+  max_value?: number;
+  min_value?: number;
+  location_uuid?: string;
   [key: string]: unknown;
 }
 
@@ -132,8 +139,11 @@ const state = reactive(JSON.parse(JSON.stringify(initialData)));
 // Local reactive references
 const timeValue = ref<number>(state.timeValue ?? 0);
 const selectedDay = ref<string>('');
+const selectedProperty = ref<string>(state.property ?? 'pm25');
 const search = ref<string>(state.search ?? '');
-const interpolationStatus = ref<string>(state.interpolationStatus ?? '');
+const interpolationStatus = ref<'disable' | 'activate'>(
+  (state.interpolationStatus as 'disable' | 'activate') ?? 'disable',
+);
 const isPlaying = ref<boolean>(state.isPlaying ?? false);
 const isLocalFile = ref<boolean>(false);
 const fileName = ref<string>('Geojson bestand | Uploaden');
@@ -147,9 +157,9 @@ const timeString = ref<string>('');
 
 // Refs for collections used by filters. We wrap them in reactive arrays so that
 // changes are tracked automatically.
-const regio = ref<Array<{ id: string; label: string; checked: boolean }>>([]);
-const Gemeente = ref<Array<{ id: string; label: string; checked: boolean }>>([]);
-const stationName = ref<Array<{ id: string; label: string; checked: boolean }>>([]);
+const regio = ref<OptionItem[]>([]);
+const Gemeente = ref<OptionItem[]>([]);
+const stationName = ref<OptionItem[]>([]);
 
 // Colors and names used for chart annotation. These were defined on the
 // original component's data. They remain constant.
@@ -162,9 +172,17 @@ const STYLE_URL = ref<string>('');
 const currentLayerId = ref<string | null>(null);
 const rasterLayers = new Set<string>();
 
-// Element references exposed by child components. These are looked up when
-// updating the map layer. Using a map reduces the number of DOM queries.
-const elements: Record<string, any> = {};
+// Template refs to child components. These allow us to access exposed refs
+// without relying on DOM queries.
+const dataTools = ref<InstanceType<typeof DashboardDataTools> | null>(null);
+const stationModal = ref<InstanceType<typeof DashboardStationModal> | null>(null);
+const toastPanel = ref<InstanceType<typeof DashboardToast> | null>(null);
+
+interface OptionItem {
+  id: string;
+  label: string;
+  checked: boolean;
+}
 
 /**
  * Computed property generating an array of 30 day names. This uses the
@@ -197,7 +215,8 @@ const formattedProperty = computed<string>(() => {
     no2: 'NO₂',
   };
   // `state.property` comes from the initial data. Provide fallback.
-  return propertyMap[state.property as string] ?? (state.property as string);
+  const rawProperty = (state.property ?? selectedProperty.value) as string;
+  return propertyMap[rawProperty] ?? rawProperty;
 });
 
 /**
@@ -264,14 +283,6 @@ onMounted(async () => {
   await initializeMap();
   await addControls();
 
-  // Populate `elements` with references from child components. This makes it
-  // easier to access DOM nodes used for property, time slider and local file
-  // input values.
-  elements['property'] = getElementRef('property');
-  elements['timeSlider'] = getElementRef('timeSlider');
-  elements['sDate'] = getElementRef('sDate');
-  elements['localFile'] = getElementRef('localFile');
-
   // Fetch initial data for the dropdown lists and set up the first layer.
   geojson.value = await fetchData(
       'https://dta-samenmeten-api.azurewebsites.net/api/data/stations'
@@ -304,21 +315,6 @@ onUnmounted(() => {
     map.value.remove();
   }
 });
-
-/**
- * Helper to retrieve element references from child components. It searches
- * through direct refs on the parent, then through nested refs on child
- * components. Returns undefined if the element cannot be found.
- */
-function getElementRef(id: string): any {
-  const directRef = (getCurrentInstance()?.proxy as any)?.$refs?.[id];
-  if (directRef) return directRef;
-  const refContainers = [(getCurrentInstance()?.proxy as any)?.$refs?.legendTabs, (getCurrentInstance()?.proxy as any)?.$refs?.dataTools];
-  for (const container of refContainers) {
-    if (container?.$refs?.[id]) return container.$refs[id];
-  }
-  return undefined;
-}
 
 /**
  * Initialize the MapLibre map instance. This is separated into its own
@@ -527,17 +523,43 @@ function getSelectedValues(name: 'regio' | 'Gemeente' | 'station_name'): string[
 }
 
 /**
+ * Sync checkbox option lists from child updates without mutating props.
+ */
+function updateRegio(list: OptionItem[]): void {
+  regio.value = list;
+}
+
+function updateGemeente(list: OptionItem[]): void {
+  Gemeente.value = list;
+}
+
+function updateStationName(list: OptionItem[]): void {
+  stationName.value = list;
+}
+
+/**
+ * Access the local file input exposed by the data tools component.
+ */
+function getLocalFileInput(): HTMLInputElement | null {
+  return dataTools.value?.localFileRef?.value ?? null;
+}
+
+/**
  * Public method exposed to child components to clear input fields. For
  * `sDate` we reset the selectedDay; otherwise we call updateLayer().
  */
 function clearInput(refName: string): void {
-  const refVal = elements[refName];
-  if (refVal) {
-    refVal.value = '';
-  }
   if (refName === 'sDate') {
     selectedDay.value = '';
   } else {
+    if (refName === 'localFile') {
+      const localFileInput = getLocalFileInput();
+      if (localFileInput) {
+        localFileInput.value = '';
+      }
+      isLocalFile.value = false;
+      fileName.value = 'Geojson bestand | Uploaden';
+    }
     updateLayer().catch((err) => console.error('Layer update failed', err));
   }
 }
@@ -617,7 +639,7 @@ function selectMatchingStations(): void {
  */
 async function updateLayer(): Promise<void> {
   // Map the selected property to the API property and update labels
-  const propDefinition = (state.propValues?.[elements['property']?.value] ?? state.propValues?.default) as any;
+  const propDefinition = (state.propValues?.[selectedProperty.value] ?? state.propValues?.default) as any;
   state.property = propDefinition.property;
   description.value = propDefinition.description;
   legendaValues.value = propDefinition.legendaValues ?? [];
@@ -627,7 +649,14 @@ async function updateLayer(): Promise<void> {
   const selectedGemeente = getSelectedValues('Gemeente');
   const selectedStName = getSelectedValues('station_name');
   // Reload the layer with the computed values
-  await reloadLayer(map.value, String(timeValue.value), selectedRegio, selectedGemeente, selectedStName);
+  await reloadLayer(
+      map.value,
+      String(timeValue.value),
+      selectedProperty.value,
+      selectedRegio,
+      selectedGemeente,
+      selectedStName,
+  );
 }
 
 /**
@@ -638,23 +667,24 @@ async function updateLayer(): Promise<void> {
 async function reloadLayer(
     m: maplibregl.Map | null,
     hour: string,
+    property: string,
     selectedRegio: string[],
     selectedGemeente: string[],
     selectedStName: string[],
 ): Promise<void> {
   if (!m) return;
   try {
-    const localFiles = elements['localFile']?.files ?? [];
+    const localFiles = getLocalFileInput()?.files ?? [];
     isLocalFile.value = localFiles.length > 0;
     fileName.value = isLocalFile.value ? localFiles[0].name : 'Geojson bestand | Uploaden';
     isFrom.value = isLocalFile.value
         ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold">van jouw Local File</span>'
         : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata</a>. Bekijk de metadata voor details over de serverdata.';
-    const selectedDateIndex = dayNames.value.indexOf(elements['sDate']?.value);
+    const selectedDateIndex = Math.max(dayNames.value.indexOf(selectedDay.value), 0);
     await filterGeojsonFeatures(
         hour,
         selectedDateIndex,
-        elements['property']?.value,
+        property,
         selectedRegio,
         selectedGemeente,
         selectedStName,
@@ -694,7 +724,7 @@ async function filterGeojsonFeatures(
   const measuredTime = date.toISOString().replace('T', '%20').substring(0, 19) + '00';
   // When interpolation is activated call interpolation function
   if (interpolationStatus.value === 'activate') {
-    await idwInterpolation(date.toISOString());
+    await idwInterpolation(date.toISOString(), selectedProperty);
   } else if (currentLayerId.value && map.value?.getLayer(currentLayerId.value)) {
     map.value.setPaintProperty(currentLayerId.value, 'raster-opacity', 0);
   }
@@ -775,7 +805,7 @@ async function filterGeojsonFeatures(
  * expects `Features` instead of `features`, so we normalise the property.
  */
 async function loadLocalFile(): Promise<FeatureCollection> {
-  const file = elements['localFile']?.files?.[0];
+  const file = getLocalFileInput()?.files?.[0];
   if (!file) throw new Error('No local file selected');
   const text = await file.text();
   const parsed = JSON.parse(text) as FeatureCollection;
@@ -791,11 +821,11 @@ async function loadLocalFile(): Promise<FeatureCollection> {
  * previously added layers to ensure only the current interpolation is
  * visible. The generated layer is added only once per date/property.
  */
-async function idwInterpolation(dateStr: string): Promise<void> {
+async function idwInterpolation(dateStr: string, property: string): Promise<void> {
   const m = map.value;
   if (!m) return;
   const bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691];
-  const layerId = `interpolatie-${dateStr}-${elements['property']?.value}`;
+  const layerId = `interpolatie-${dateStr}-${property}`;
   rasterLayers.add(layerId);
   // Toggle opacity across all raster layers
   rasterLayers.forEach((id) => {
@@ -805,7 +835,7 @@ async function idwInterpolation(dateStr: string): Promise<void> {
   });
   currentLayerId.value = layerId;
   if (!m.getLayer(layerId)) {
-    const url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${elements['property']?.value}_sqldb&bbox=${bounds.join(',')}&time=${dateStr}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
+    const url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${property}_sqldb&bbox=${bounds.join(',')}&time=${dateStr}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
     m.addSource(layerId, {
       type: 'image',
       url,
@@ -1063,9 +1093,9 @@ async function loadChart(props: FeatureProperties): Promise<void> {
     const datasets = createDatasets(props.property ?? '', dataByDate);
     // Wait for DOM to update before referencing chart canvas
     nextTick(() => {
-      const chartRef = (getCurrentInstance()?.proxy as any)?.$refs.stationModal?.$refs?.myChart;
-      if (chartRef) {
-        createChart(chartRef, props.property ?? '', dataByDate, datasets);
+      const chartCanvas = stationModal.value?.chartRef?.value;
+      if (chartCanvas) {
+        createChart(chartCanvas, props.property ?? '', dataByDate, datasets);
       }
     });
   } catch (error) {
@@ -1263,9 +1293,9 @@ function formatDate(date: Date, days: string[]): string {
  * Bootstrap Toast API exposed on the DashboardToast component.
  */
 function toast(): void {
-  const toastRef = (getCurrentInstance()?.proxy as any)?.$refs.toastPanel?.$refs?.liveToast;
-  if (!toastRef) return;
-  const toastInstance = (window.bootstrap.Toast as any).getOrCreateInstance(toastRef);
+  const toastElement = toastPanel.value?.toastRef?.value;
+  if (!toastElement) return;
+  const toastInstance = (window.bootstrap.Toast as any).getOrCreateInstance(toastElement);
   const now = new Date();
   timeString.value = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
   toastInstance.show();
