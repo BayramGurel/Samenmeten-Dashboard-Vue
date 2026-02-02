@@ -114,7 +114,6 @@ const {
   isLocalFile,
   fileName,
   dayNames,
-  timeOptions,
   applyPropertyDefinition,
   fetchData,
   updateUniqueItems,
