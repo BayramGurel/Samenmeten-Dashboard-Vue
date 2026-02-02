@@ -1,9 +1,9 @@
 <template>
   <!-- Sidebar with map-specific information -->
   <MapSidebarInfo
-      :geojson="geojson"
-      :formatted-property="formattedProperty"
-      :description="description"
+    :geojson="geojson"
+    :formatted-property="formattedProperty"
+    :description="description"
   />
   <!-- Map container -->
   <div class="container-fluid" id="czoom">
@@ -11,51 +11,50 @@
     <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
       <!-- Legend and time slider controls -->
       <DashboardLegendTabs
-          v-model:timeValue="timeValue"
-          v-model:selectedDay="selectedDay"
-          v-model:selectedProperty="selectedProperty"
-          :day-names="dayNames"
-          :is-playing="isPlaying"
-          :button-class="buttonClass"
-          :formatted-property="formattedProperty"
-          :legenda-values="legendaValues"
-          :colors="colors"
-          :concentration-values="concentrationValues"
-          :is-from="isFrom"
-          @reload-page="reloadPage"
-          @update-layer="updateLayer"
-          @stop-slider="stopSlider"
-          @toggle-slider="toggleSlider"
-          @clear-input="clearInput"
+        v-model:timeValue="timeValue"
+        v-model:selectedDay="selectedDay"
+        v-model:selectedProperty="selectedProperty"
+        :day-names="dayNames"
+        :is-playing="isPlaying"
+        :button-class="buttonClass"
+        :formatted-property="formattedProperty"
+        :legenda-values="legendaValues"
+        :colors="colors"
+        :concentration-values="concentrationValues"
+        :is-from="isFrom"
+        @reload-page="reloadPage"
+        @update-layer="updateLayer"
+        @stop-slider="stopSlider"
+        @toggle-slider="toggleSlider"
+        @clear-input="clearInput"
       />
 
       <!-- Data tools (filters, downloads) -->
       <DashboardDataTools
-          ref="dataTools"
-          :regio="regio"
-          :gemeente="Gemeente"
-          :station-name="stationName"
-          :search="search"
-          :interpolation-status="interpolationStatus"
-          :is-local-file="isLocalFile"
-          :file-name="fileName"
-          @update-layer="updateLayer"
-          @select-matching-stations="selectMatchingStations"
-          @update:regio="updateRegio"
-          @update:gemeente="updateGemeente"
-          @update:station-name="updateStationName"
-          @update:search="updateSearch"
-          @update:interpolation-status="updateInterpolationStatus"
-          @clear-input="clearInput"
-          @download-geojson="downloadGeoJSON"
-          @download-csv="downloadCSV"
+        ref="dataTools"
+        :regio="regio"
+        :gemeente="gemeente"
+        :station-name="stationName"
+        :search="search"
+        :interpolation-status="interpolationStatus"
+        :is-local-file="isLocalFile"
+        :file-name="fileName"
+        @update-layer="updateLayer"
+        @select-matching-stations="selectMatchingStations"
+        @update:regio="updateRegio"
+        @update:gemeente="updateGemeente"
+        @update:station-name="updateStationName"
+        @update:search="updateSearch"
+        @update:interpolation-status="updateInterpolationStatus"
+        @clear-input="clearInput"
+        @download-geojson="downloadGeoJSON"
+        @download-csv="downloadCSV"
       />
     </div>
     <!-- Modal for station details -->
     <DashboardStationModal
-        ref="stationModal"
-        :formatted-property="formattedProperty"
-        :properties="properties"
+      :formatted-property="formattedProperty"
+      :properties="properties"
     />
     <!-- Toast for download notifications -->
     <DashboardToast ref="toastPanel" :time-string="timeString" />
@@ -64,11 +63,9 @@
 
 <!--
   This component renders the main dashboard for the Samen Meten application.
-  It has been refactored from the legacy Options API to the Composition API
-  for improved readability, reusability and type safety. State is managed
-  through reactive references and objects. External side effects such as map
-  initialization, data fetching and DOM interactions are isolated in
-  composable functions.
+  The logic has been refactored into composables and subcomponents to improve
+  maintainability. Map-specific logic lives in useMap, data fetching and
+  filtering lives in useData, and chart rendering lives in StationChart.
 -->
 <script setup>
 import {
@@ -78,7 +75,6 @@ import {
   watch,
   onMounted,
   onUnmounted,
-  nextTick,
 } from 'vue';
 import MapSidebarInfo from '@/components/samen-meten/MapSidebarInfo.vue';
 import DashboardLegendTabs from '@/components/samen-meten/DashboardLegendTabs.vue';
@@ -86,137 +82,87 @@ import DashboardDataTools from '@/components/samen-meten/DashboardDataTools.vue'
 import DashboardStationModal from '@/components/samen-meten/DashboardStationModal.vue';
 import DashboardToast from '@/components/samen-meten/DashboardToast.vue';
 import { data as initialData } from '@/data/variable.js';
-// Import pure helpers from the utils module. These are reused across components
-// and expose no side effects, making them easy to test and maintain.
-// Helpers are defined locally in this file to keep the component self‑contained.
-// TODO: consider extracting these helpers into a separate utils module if they
-// need to be reused across multiple components.
-
-/**
- * @typedef {Object} FeatureProperties
- * @property {string=} station_name
- * @property {string=} property
- * @property {number=} value
- * @property {string=} unit
- * @property {string=} Gemeente
- * @property {string=} regio
- * @property {string=} measured_time
- * @property {number=} avg_value
- * @property {number=} max_value
- * @property {number=} min_value
- * @property {string=} location_uuid
- * @property {Object<string, any>=} [key]
- */
-
-/**
- * @typedef {Object} Feature
- * @property {'Feature'} type
- * @property {{ type: string, coordinates: number[]|number[][] }} geometry
- * @property {FeatureProperties} properties
- */
-
-/**
- * @typedef {Object} FeatureCollection
- * @property {'FeatureCollection'} type
- * @property {Feature[]} features
- * @property {Feature[]=} Features
- */
-
-/**
- * @typedef {Object} OptionItem
- * @property {string} id
- * @property {string} label
- * @property {boolean} checked
- */
+import { useData } from '@/composables/useData';
+import { useMap } from '@/composables/useMap';
+import { getColor } from '@/utils/samenMetenColors';
 
 /**
  * Deep clone initial state to avoid mutating imported data directly.
- * Note: JSON.parse/stringify is sufficient here as initialData contains only
- * serializable values.
  */
 const state = reactive(JSON.parse(JSON.stringify(initialData)));
 
-// Local reactive references
 const timeValue = ref(state.timeValue ?? 0);
 const selectedDay = ref('');
 const selectedProperty = ref(state.property ?? 'pm25');
 const search = ref(state.search ?? '');
 const interpolationStatus = ref(state.interpolationStatus ?? 'disable');
 const isPlaying = ref(state.isPlaying ?? false);
-const isLocalFile = ref(false);
-const fileName = ref('Geojson bestand | Uploaden');
-const isFrom = ref('');
-const description = ref('');
-const legendaValues = ref([]);
-const concentrationValues = ref([]);
-const geojson = ref(null);
 const properties = ref({});
 const timeString = ref('');
 
-// Refs for collections used by filters. We wrap them in reactive arrays so that
-// changes are tracked automatically.
-const regio = ref([]);
-const Gemeente = ref([]);
-const stationName = ref([]);
-
-// Colors and names used for chart annotation. These were defined on the
-// original component's data. They remain constant.
 const colors = ref(state.colors ?? []);
-const dayColors = state.dayColors ?? [];
 
-// Map related state
-const map = ref(null);
-const STYLE_URL = ref('');
-const currentLayerId = ref(null);
-const rasterLayers = new Set();
+const {
+  geojson,
+  regio,
+  gemeente,
+  stationName,
+  description,
+  legendaValues,
+  concentrationValues,
+  isFrom,
+  isLocalFile,
+  fileName,
+  dayNames,
+  timeOptions,
+  applyPropertyDefinition,
+  fetchData,
+  updateUniqueItems,
+  createCheckboxes,
+  getSelectedValues,
+  reloadLayer,
+  formatDate,
+} = useData(state);
 
-// Template refs to child components. These allow us to access exposed refs
-// without relying on DOM queries.
-const dataTools = ref(null);
-const stationModal = ref(null);
-const toastPanel = ref(null);
-
-/**
- * Computed property generating an array of 30 day names. This uses the
- * `formatDate` helper to ensure the date format matches the locale. It
- * recomputes only when dependencies change, improving performance.
- */
-const dayNames = computed(() => {
-  return Array.from({ length: 30 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    return formatDate(date, state.days);
-  });
+const {
+  map,
+  initializeMap,
+  addControls,
+  updateMapSourceAndLayer,
+  idwInterpolation,
+  hideInterpolationLayer,
+} = useMap({
+  mapContainerId: 'map',
+  apiKey: state.API_KEY,
+  styleUrls: state.STYLE_URLS,
+  styleNames: state.STYLE_NAMES,
+  bbox: state.bbox,
+  getColor,
+  onStationSelect: (props) => {
+    properties.value = props;
+  },
+  onStationDetails: async (props) => {
+    properties.value = props;
+  },
 });
 
-/**
- * Computed property for determining the button style based on playback state.
- */
+const dataTools = ref(null);
+const toastPanel = ref(null);
+
 const buttonClass = computed(() => {
   return isPlaying.value ? 'btn-outline-danger' : 'btn-outline-primary';
 });
 
-/**
- * Map the internal property names to user‑friendly labels. If the property
- * cannot be found in the map, return it unchanged.
- */
 const formattedProperty = computed(() => {
   const propertyMap = {
     pm25: 'PM2,5',
     pm10: 'PM10',
     no2: 'NO₂',
   };
-  // `state.property` comes from the initial data. Provide fallback.
   const rawProperty = state.property ?? selectedProperty.value;
   return propertyMap[rawProperty] ?? rawProperty;
 });
 
-/**
- * Watch for changes to the selected day and refresh the layer when valid. This
- * replaces the legacy watch property on the Options API. The immediate
- * parameter ensures that updateLayer runs on component creation when
- * selectedDay is set programmatically.
- */
 watch(
   () => selectedDay.value,
   (newDay) => {
@@ -226,10 +172,6 @@ watch(
   },
 );
 
-// Refresh the layer whenever the selected hour changes. Watching the reactive
-// `timeValue` ensures that updates occur even when the slider is moved
-// programmatically. A small debounce is applied to avoid rapid consecutive
-// requests when the user drags the slider quickly.
 let timeDebounce = null;
 watch(
   () => timeValue.value,
@@ -241,8 +183,6 @@ watch(
   },
 );
 
-// Whenever the interpolation status changes, reload the layer. This ensures
-// that enabling or disabling interpolation takes effect immediately.
 watch(
   () => interpolationStatus.value,
   () => {
@@ -250,9 +190,6 @@ watch(
   },
 );
 
-// React to changes in the search term by selecting matching stations. We
-// debounce this watcher slightly to prevent repeated updates while the user
-// types.
 let searchDebounce = null;
 watch(
   () => search.value,
@@ -264,20 +201,15 @@ watch(
   },
 );
 
-/**
- * Lifecycle hook that runs once the component is mounted. Initializes the
- * map, sets up UI controls and begins loading data. All asynchronous
- * operations are awaited sequentially for deterministic behaviour.
- */
 onMounted(async () => {
-  // Construct style URL with API key
-  STYLE_URL.value = `https://api.maptiler.com/maps/dataviz/style.json?key=${state.API_KEY}`;
-  await initializeMap();
-  await addControls();
+  const styleUrl = `https://api.maptiler.com/maps/dataviz/style.json?key=${state.API_KEY}`;
+  initializeMap(styleUrl);
+  addControls(() => {
+    updateLayer().catch((err) => console.error('Layer update failed', err));
+  });
 
-  // Fetch initial data for the dropdown lists and set up the first layer.
   geojson.value = await fetchData(
-    'https://dta-samenmeten-api.azurewebsites.net/api/data/stations'
+    'https://dta-samenmeten-api.azurewebsites.net/api/data/stations',
   );
 
   await Promise.all([
@@ -286,327 +218,65 @@ onMounted(async () => {
     updateUniqueItems(geojson.value, 'station_name'),
   ]);
 
-  // Create default checkboxes for filters. This also maintains checked state
-  // across updates.
   createCheckboxes('regio', regio.value.map((r) => r.id));
-  createCheckboxes('Gemeente', Gemeente.value.map((g) => g.id));
+  createCheckboxes('Gemeente', gemeente.value.map((g) => g.id));
   createCheckboxes('station_name', stationName.value.map((s) => s.id));
 
-  // Select the most recent day by default and load the layer
   selectedDay.value = dayNames.value[0];
   await updateLayer();
 });
 
-/**
- * Clean up resources when the component is unmounted. This includes
- * destroying the Chart instance to free up memory.
- */
 onUnmounted(() => {
-  destroyChart();
+  stopSlider();
   if (map.value) {
     map.value.remove();
   }
 });
 
-/**
- * Initialize the MapLibre map instance. This is separated into its own
- * function so that it can be reused or mocked during testing. It sets
- * the map on the `map` ref and listens for the `load` event to add initial
- * layers.
- *
- * TODO: Consider extracting map initialisation, control setup and layer
- * management into a composable (e.g. `useMap`) to simplify this component
- * and improve testability. The current component still contains
- * responsibilities that could live in a dedicated map management module.
- */
-async function initializeMap() {
-  // Create the map instance
-  map.value = new window.maplibregl.Map({
-    container: 'map',
-    style: STYLE_URL.value,
-    center: [4.218788, 52.008663],
-    zoom: 8.9,
-  });
-  map.value.on('load', () => {
-    addLineSourceAndLayer();
-    addWindLayer();
-  });
-}
-
-/**
- * Add interactive controls to the map including style switcher, fullscreen,
- * navigation and geolocation controls. All controls are added after the map
- * instance has been created.
- */
-async function addControls() {
-  if (!map.value) return;
-  // Custom style switcher
-  addStyleSwitchControl();
-  // Built‑in controls
-  map.value.addControl(new window.maplibregl.FullscreenControl());
-  map.value.addControl(new window.maplibregl.NavigationControl());
-  map.value.addControl(
-    new window.maplibregl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-    })
-  );
-}
-
-/**
- * Add a source and layer for drawing a bounding line around the map. Checks
- * for existence before adding to avoid duplicates.
- */
-function addLineSourceAndLayer() {
-  const m = map.value;
-  if (!m) return;
-  if (!m.getSource('line')) {
-    m.addSource('line', {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: state.bbox ?? [],
-        },
-      },
-    });
-  }
-  if (!m.getLayer('line')) {
-    m.addLayer({
-      id: 'line',
-      type: 'line',
-      source: 'line',
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': '#ff0000',
-        'line-width': 1.4,
-        'line-opacity': 0.8,
-        'line-blur': 0.5,
-      },
-    });
-  }
-}
-
-/**
- * Add a wind layer to the map. This placeholder exists to match the API of
- * the original component; implement your own logic here if needed.
- */
-function addWindLayer() {
-  // TODO: Implement wind layer logic if required. Left blank for clarity.
-}
-
-/**
- * Create a style switch control that lets the user change the map base style.
- * It constructs a select element populated with the available style URLs.
- * Any errors during style switching are caught and logged.
- */
-function addStyleSwitchControl() {
-  if (!map.value) return;
-  // Build the control container
-  const styleSwitcherContainer = document.createElement('div');
-  styleSwitcherContainer.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-  const label = document.createElement('label');
-  label.className = 'fw-semibold text-success';
-  label.innerText = 'Selecteer achtergrond:';
-  styleSwitcherContainer.appendChild(label);
-  const styleSwitcher = document.createElement('select');
-  styleSwitcher.className = 'form-select form-select-sm';
-  styleSwitcher.style.fontSize = '1em';
-  styleSwitcher.style.cursor = 'pointer';
-  // Provide an accessible name for screen readers
-  styleSwitcher.setAttribute('aria-label', 'Selecteer kaartstijl');
-  const styles = (state.STYLE_URLS ?? []).map(
-    (url) => `${url}${state.API_KEY}`
-  );
-  styles.forEach((style, index) => {
-    const option = document.createElement('option');
-    option.value = style;
-    option.text = state.STYLE_NAMES?.[index] ?? `Style ${index + 1}`;
-    styleSwitcher.appendChild(option);
-  });
-  styleSwitcher.onchange = (event) => {
-    const target = event.target;
-    if (!target) return;
-    try {
-      map.value?.setStyle(target.value);
-      // After style change, re‑add custom layers and refresh the data layer
-      setTimeout(() => {
-        addLineSourceAndLayer();
-        updateLayer().catch((err) => console.error('Layer update failed', err));
-      }, 50);
-    } catch (error) {
-      console.error('An error occurred while switching styles:', error);
-    }
-  };
-  styleSwitcherContainer.appendChild(styleSwitcher);
-  // Create a control conforming to the maplibre control interface
-  const control = {
-    onAdd: () => styleSwitcherContainer,
-    onRemove: () => {},
-    getDefaultPosition: () => 'top-right',
-  };
-  map.value.addControl(control);
-}
-
-/**
- * Fetch JSON data from the given URL and return the parsed object. Errors
- * during the fetch or parsing are propagated to the caller to handle.
- *
- * @param {string} url
- * @returns {Promise<FeatureCollection>}
- */
-async function fetchData(url) {
-  const response = await fetch(url, {
-    method: 'GET',
-    credentials: 'include',
-    keepalive: true,
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status}`);
-  }
-  return await response.json();
-}
-
-/**
- * Update the list of unique items for the given column. It uses the
- * `geojson` to derive a set of unique values and then updates the
- * corresponding reactive array. For accessibility, items are sorted
- * alphabetically.
- *
- * @param {FeatureCollection | null} geo
- * @param {string} column
- */
-async function updateUniqueItems(geo, column) {
-  if (!geo || (!geo.Features && !geo.features)) return;
-  const features = geo.features ?? geo.Features;
-  const items = Array.from(
-    new Set(
-      features.map((feature) => feature.properties?.[column])
-    )
-  ).filter((item) => !!item);
-  const target = column === 'regio' ? regio : column === 'Gemeente' ? Gemeente : stationName;
-  // Preserve checked state if items already exist
-  const checkedIds = new Set(target.value.filter((i) => i.checked).map((i) => i.id));
-  target.value = items
-    .sort((a, b) => a.localeCompare(b))
-    .map((item) => ({ id: item, label: item, checked: checkedIds.has(item) }));
-}
-
-/**
- * Create checkbox objects for the given identifier. This helper ensures that
- * each filter list (regio, Gemeente, station_name) is synchronised with
- * the array of available items. It respects the previously checked state.
- *
- * @param {'regio' | 'Gemeente' | 'station_name'} id
- * @param {string[]} items
- */
-function createCheckboxes(id, items) {
-  const target = id === 'regio' ? regio : id === 'Gemeente' ? Gemeente : stationName;
-  const checkedIds = new Set(target.value.filter((i) => i.checked).map((i) => i.id));
-  target.value = items.map((item) => ({
-    id: item,
-    label: item,
-    checked: checkedIds.has(item),
-  }));
-}
-
-/**
- * Retrieve selected values from the checkboxes. This returns an array of
- * identifiers that the user has checked. When nothing is selected the
- * returned array is empty.
- *
- * @param {'regio' | 'Gemeente' | 'station_name'} name
- * @returns {string[]}
- */
-function getSelectedValues(name) {
-  const list = name === 'regio' ? regio.value : name === 'Gemeente' ? Gemeente.value : stationName.value;
-  return list.filter((item) => item.checked).map((item) => item.id);
-}
-
-/**
- * Sync checkbox option lists from child updates without mutating props.
- *
- * @param {OptionItem[]} list
- */
 function updateRegio(list) {
   regio.value = list;
 }
 
-/**
- * @param {OptionItem[]} list
- */
 function updateGemeente(list) {
-  Gemeente.value = list;
+  gemeente.value = list;
 }
 
-/**
- * @param {OptionItem[]} list
- */
 function updateStationName(list) {
   stationName.value = list;
 }
 
-/**
- * @param {string} value
- */
 function updateSearch(value) {
   search.value = value;
 }
 
-/**
- * @param {string} value
- */
 function updateInterpolationStatus(value) {
   interpolationStatus.value = value;
 }
 
-/**
- * Access the local file input exposed by the data tools component.
- *
- * @returns {HTMLInputElement | null}
- */
 function getLocalFileInput() {
   return dataTools.value?.localFileRef?.value ?? null;
 }
 
-/**
- * Public method exposed to child components to clear input fields. For
- * `sDate` we reset the selectedDay; otherwise we call updateLayer().
- *
- * @param {string} refName
- */
 function clearInput(refName) {
   if (refName === 'sDate') {
     selectedDay.value = '';
-  } else {
-    if (refName === 'localFile') {
-      const localFileInput = getLocalFileInput();
-      if (localFileInput) {
-        localFileInput.value = '';
-      }
-      isLocalFile.value = false;
-      fileName.value = 'Geojson bestand | Uploaden';
+    return;
+  }
+  if (refName === 'localFile') {
+    const localFileInput = getLocalFileInput();
+    if (localFileInput) {
+      localFileInput.value = '';
     }
     updateLayer().catch((err) => console.error('Layer update failed', err));
+    return;
   }
+  updateLayer().catch((err) => console.error('Layer update failed', err));
 }
 
-/**
- * Reload the page. This simply delegates to the browser's reload function.
- */
 function reloadPage() {
   window.location.reload();
 }
 
-/**
- * Toggle the automatic slider. If it was previously running it will stop and
- * vice versa. The slider uses a timer to advance the hour and update the
- * layer. When it reaches the maximum hour, it stops automatically.
- */
 function toggleSlider() {
   isPlaying.value = !isPlaying.value;
   if (isPlaying.value) {
@@ -618,11 +288,6 @@ function toggleSlider() {
 
 let sliderInterval = null;
 
-/**
- * Start the time slider animation. It sets up an interval that increments
- * `timeValue` every 1.55 seconds. The maximum hour is derived from the
- * selected day (0–23 or the current hour if today).
- */
 function startSlider() {
   stopSlider();
   const today = formatDate(new Date(), state.days);
@@ -640,9 +305,6 @@ function startSlider() {
   }, 1550);
 }
 
-/**
- * Stop the slider and clear the interval.
- */
 function stopSlider() {
   if (sliderInterval) {
     clearInterval(sliderInterval);
@@ -650,10 +312,6 @@ function stopSlider() {
   }
 }
 
-/**
- * Select stations whose label matches the current search term. This sets the
- * checked state accordingly on the stationName list and refreshes the layer.
- */
 function selectMatchingStations() {
   const lowerCaseSearch = search.value.toLowerCase();
   stationName.value.forEach((station) => {
@@ -662,684 +320,28 @@ function selectMatchingStations() {
   updateLayer().catch((err) => console.error('Layer update failed', err));
 }
 
-/**
- * Update the map layer and geojson data based on the current filters. This
- * function coordinates property mapping, selection retrieval, data
- * filtering and map updates. Errors are caught and logged rather than
- * thrown to the parent to avoid unhandled rejection warnings.
- */
 async function updateLayer() {
-  // Map the selected property to the API property and update labels
-  const propDefinition = state.propValues?.[selectedProperty.value]
-    ?? state.propValues?.default
-    ?? {};
-  state.property = propDefinition.property;
-  description.value = propDefinition.description;
-  legendaValues.value = propDefinition.legendaValues ?? [];
-  concentrationValues.value = propDefinition.concentrationValues ?? [];
-  // Determine selected values from filters
+  const property = applyPropertyDefinition(selectedProperty.value);
   const selectedRegio = getSelectedValues('regio');
   const selectedGemeente = getSelectedValues('Gemeente');
   const selectedStName = getSelectedValues('station_name');
-  // Reload the layer with the computed values
-  await reloadLayer(
-    map.value,
-    String(timeValue.value),
-    selectedProperty.value,
+
+  await reloadLayer({
+    hour: String(timeValue.value),
+    selectedProperty: property,
+    selectedDateIndex: Math.max(dayNames.value.indexOf(selectedDay.value), 0),
     selectedRegio,
     selectedGemeente,
     selectedStName,
-  );
-}
-
-/**
- * Reload the map layer by fetching new data and updating the map source.
- * It optionally loads data from a local file if present. Layer opacity is
- * controlled when interpolation is enabled.
- */
-async function reloadLayer(
-  m,
-  hour,
-  property,
-  selectedRegio,
-  selectedGemeente,
-  selectedStName,
-) {
-  if (!m) return;
-  try {
-    const localFiles = getLocalFileInput()?.files ?? [];
-    isLocalFile.value = localFiles.length > 0;
-    fileName.value = isLocalFile.value ? localFiles[0].name : 'Geojson bestand | Uploaden';
-    isFrom.value = isLocalFile.value
-      ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold">van jouw Local File</span>'
-      : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata</a>. Bekijk de metadata voor details over de serverdata.';
-    const selectedDateIndex = Math.max(dayNames.value.indexOf(selectedDay.value), 0);
-    await filterGeojsonFeatures(
-      hour,
-      selectedDateIndex,
-      property,
-      selectedRegio,
-      selectedGemeente,
-      selectedStName,
-      isLocalFile.value,
-    );
-    updateMapSourceAndLayer(m, geojson.value);
-  } catch (error) {
-    console.error('Failed to reload layer:', error);
-  }
-}
-
-/**
- * Filter the GeoJSON features according to the selected parameters. When
- * interpolation is active it applies the IDW interpolation. Otherwise it
- * fetches station and observation data and merges them on the station name.
- */
-async function filterGeojsonFeatures(
-  hour,
-  selectedDateIndex,
-  selectedProperty,
-  selectedRegio,
-  selectedGemeente,
-  selectedStName,
-  local,
-) {
-  const now = new Date();
-  now.setDate(now.getDate() - selectedDateIndex);
-  // Adjust for timezone offset to match API expectations
-  const date = new Date(
-    Date.UTC(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      parseInt(hour, 10) + now.getTimezoneOffset() / 60,
-    ),
-  );
-  const measuredTime = date.toISOString().replace('T', '%20').substring(0, 19) + '00';
-  // When interpolation is activated call interpolation function
-  if (interpolationStatus.value === 'activate') {
-    await idwInterpolation(date.toISOString(), selectedProperty);
-  } else if (currentLayerId.value && map.value?.getLayer(currentLayerId.value)) {
-    map.value.setPaintProperty(currentLayerId.value, 'raster-opacity', 0);
-  }
-  // Build filters for API calls
-  const filters = {
-    property: selectedProperty,
-    station: selectedStName.length > 0 ? selectedStName : undefined,
-    gemeente:
-      selectedStName.length > 0
-        ? undefined
-        : selectedGemeente.length > 0
-          ? selectedGemeente
-          : undefined,
-    regio:
-      selectedStName.length > 0 || selectedGemeente.length > 0
-        ? undefined
-        : selectedRegio.length > 0
-          ? selectedRegio
-          : undefined,
-  };
-  let filtered;
-  if (local) {
-    filtered = await loadLocalFile();
-  } else {
-    // Compose URLs with query parameters
-    const urlStations = new URL(
-      'https://dta-samenmeten-api.azurewebsites.net/api/data/stations',
-    );
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value && (Array.isArray(value) ? value.length > 0 : true)) {
-        urlStations.searchParams.append(key, Array.isArray(value) ? value.join(',') : String(value));
-      }
-    });
-    const urlObservations = new URL(
-      `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?property=${selectedProperty}&measured_time=${measuredTime}`,
-    );
-    // Fetch in parallel
-    const [stations, observations] = await Promise.all([
-      fetchData(urlStations.toString()),
-      fetchData(urlObservations.toString()),
-    ]);
-    // Build a lookup for observation by station name
-    const observationMap = new Map();
-    (observations.features ?? observations.Features ?? []).forEach((observation) => {
-      observationMap.set(observation.properties.station_name ?? '', observation);
-    });
-    // Merge station and observation data into a new FeatureCollection
-    filtered = {
-      type: 'FeatureCollection',
-      features: (stations.features ?? stations.Features ?? []).filter((station) => {
-        const matching = observationMap.get(station.properties.station_name ?? '');
-        if (matching) {
-          // Copy aggregated values from station onto observation
-          matching.properties.avg_value = station.properties.avg_value;
-          matching.properties.max_value = station.properties.max_value;
-          matching.properties.min_value = station.properties.min_value;
-          // Replace station properties and geometry with observation
-          station.properties = { ...matching.properties };
-          station.geometry = matching.geometry;
-          return true;
-        }
-        return false;
-      }),
-    };
-  }
-  // Update the reactive geojson reference
-  geojson.value = filtered;
-  // Refresh filter lists with new unique values and preserve checked state
-  await Promise.all([
-    updateUniqueItems(filtered, 'regio'),
-    updateUniqueItems(filtered, 'Gemeente'),
-    updateUniqueItems(filtered, 'station_name'),
-  ]);
-}
-
-/**
- * Load and parse a local GeoJSON file selected by the user. The legacy API
- * expects `Features` instead of `features`, so we normalise the property.
- *
- * @returns {Promise<FeatureCollection>}
- */
-async function loadLocalFile() {
-  const file = getLocalFileInput()?.files?.[0];
-  if (!file) throw new Error('No local file selected');
-  const text = await file.text();
-  const parsed = JSON.parse(text);
-  if (parsed.Features) {
-    parsed.features = parsed.Features;
-    delete parsed.Features;
-  }
-  return parsed;
-}
-
-/**
- * Perform IDW interpolation by adding a raster layer. It toggles opacity on
- * previously added layers to ensure only the current interpolation is
- * visible. The generated layer is added only once per date/property.
- */
-async function idwInterpolation(dateStr, property) {
-  const m = map.value;
-  if (!m) return;
-  const bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691];
-  const layerId = `interpolatie-${dateStr}-${property}`;
-  rasterLayers.add(layerId);
-  // Toggle opacity across all raster layers
-  rasterLayers.forEach((id) => {
-    if (m.getLayer(id)) {
-      m.setPaintProperty(id, 'raster-opacity', id === layerId ? 1 : 0);
-    }
+    interpolationStatus: interpolationStatus.value,
+    idwInterpolation,
+    hideInterpolationLayer,
+    localFileInput: getLocalFileInput(),
   });
-  currentLayerId.value = layerId;
-  if (!m.getLayer(layerId)) {
-    const url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${property}_sqldb&bbox=${bounds.join(',')}&time=${dateStr}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
-    m.addSource(layerId, {
-      type: 'image',
-      url,
-      coordinates: [
-        [bounds[0], bounds[3]],
-        [bounds[2], bounds[3]],
-        [bounds[2], bounds[1]],
-        [bounds[0], bounds[1]],
-      ],
-    });
-    m.addLayer({ id: layerId, type: 'raster', source: layerId, paint: { 'raster-opacity': 1 } });
-  }
+
+  updateMapSourceAndLayer(geojson.value);
 }
 
-/**
- * Update or create the map source and layer for station points. When a
- * FeatureCollection is provided it normalises the property names and
- * updates the existing source. On first call it creates the layer and
- * attaches click handlers for opening the station popup.
- *
- * @param {any} m
- * @param {FeatureCollection | null} geo
- */
-function updateMapSourceAndLayer(m, geo) {
-  if (!geo || (!geo.features && !geo.Features)) return;
-  const features = geo.features ?? geo.Features;
-  const normalized = {
-    type: 'FeatureCollection',
-    features: features,
-  };
-  // Create or update source
-  if (!m.getSource('stations')) {
-    m.addSource('stations', { type: 'geojson', data: normalized });
-  } else {
-    const source = m.getSource('stations');
-    if (source && source.setData) {
-      source.setData(normalized);
-    }
-  }
-  // Add layer if not present
-  if (!m.getLayer('stations')) {
-    addStationsLayer();
-  }
-}
-
-/**
- * Generate paint rules for the station circles based on the property and
- * value. Uses step expressions to assign colours according to breakpoints.
- *
- * @returns {any[]}
- */
-function getCircleColorExpression() {
-  return [
-    'case',
-    ['==', ['get', 'property'], 'pm25'],
-    ['step', ['get', 'value'], '#1E90FF', 8.3, '#48D1CC', 16.7, '#9ACD32', 25, '#DAA520', Infinity, '#000000'],
-    ['in', ['get', 'property'], ['literal', ['no2', 'pm10']]],
-    ['step', ['get', 'value'], '#1E90FF', 13.3, '#48D1CC', 26.6, '#9ACD32', 40, '#DAA520', Infinity, '#000000'],
-    '#000000',
-  ];
-}
-
-/**
- * Add the station layer with appropriate styling and click interaction. When
- * the layer is clicked either a dropdown or detail popup is shown based on
- * the number of overlapping features. Popups are sanitised to prevent XSS.
- */
-function addStationsLayer() {
-  const m = map.value;
-  if (!m) return;
-  m.addLayer({
-    id: 'stations',
-    type: 'circle',
-    source: 'stations',
-    paint: {
-      'circle-radius': 6,
-      'circle-color': getCircleColorExpression(),
-      'circle-stroke-color': '#ffffff',
-      'circle-stroke-width': 1.8,
-    },
-  });
-  m.on('click', 'stations', handleStationClick);
-}
-
-/**
- * Handle clicks on station points. If multiple features are present at the
- * clicked point, display a dropdown to select one. Otherwise show the
- * details popup directly. Both paths sanitise user data to avoid XSS.
- *
- * @param {any} e
- */
-function handleStationClick(e) {
-  const m = map.value;
-  if (!m) return;
-  const features = m.queryRenderedFeatures(e.point, { layers: ['stations'] });
-  if (features.length > 1) {
-    createDropdownPopup(features, e);
-  } else if (features.length === 1) {
-    createDetailPopup(features[0], e);
-  }
-}
-
-/**
- * Create a dropdown popup listing multiple overlapping stations. The user can
- * pick one and then see details. The popup content is built with
- * sanitisation by escaping text values.
- *
- * @param {any[]} features
- * @param {any} e
- */
-function createDropdownPopup(features, e) {
-  const m = map.value;
-  if (!m) return;
-  // Build HTML string for dropdown. Escape station names to prevent XSS.
-  let dropdownHTML = `
-    <div class="card text-center border-primary">
-      <div class="card-header bg-primary text-white">
-        <h6>Selecteer Station <i class="bi bi-search"></i></h6>
-      </div>
-      <div class="card-body">
-        <div class="dropdown">
-          <button class="btn btn-outline-primary dropdown-toggle" type="button" id="stationSelect" data-bs-toggle="dropdown" aria-expanded="false">
-            Kies een station
-          </button>
-          <div class="dropdown-menu" aria-labelledby="stationSelect" style="height: 200px; overflow-y: auto;">
-  `;
-  features.forEach((feature, index) => {
-    const props = feature.properties ?? {};
-    const station = String(props.station_name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const value = props.value;
-    const color = getColor(value ?? 0, props.property ?? '', '1');
-    dropdownHTML += `
-      <a class="dropdown-item" href="#" data-index="${index}">
-        <i class="bi bi-geo-alt-fill" style="color: ${color};"></i> ${station}
-      </a>`;
-  });
-  dropdownHTML += `
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  const popup = new window.maplibregl.Popup({ className: 'my-popup' })
-    .setLngLat(e.lngLat)
-    .setHTML(dropdownHTML)
-    .addTo(m);
-  // After DOM insertion attach click listeners
-  nextTick(() => {
-    const items = Array.from(popup.getElement().querySelectorAll('.dropdown-item'));
-    items.forEach((item) => {
-      item.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        const index = Number(ev.currentTarget?.dataset?.index ?? 0);
-        popup.remove();
-        createDetailPopup(features[index], e);
-      });
-    });
-  });
-}
-
-/**
- * Create a detailed popup for a single station. It displays the station's
- * name, property value, location and last update time. A button triggers
- * loading of the historical chart in a modal. User content is escaped.
- *
- * @param {any} feature
- * @param {any} e
- */
-function createDetailPopup(feature, e) {
-  const m = map.value;
-  if (!m) return;
-  const props = feature.properties ?? {};
-  properties.value = props;
-  // Escape values
-  const stationNameEsc = String(props.station_name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const propertyEsc = String(props.property ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const valueEsc = props.value !== undefined ? props.value.toString() : 'N/A';
-  const unitEsc = String(props.unit ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const gemeenteEsc = String(props.Gemeente ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const regioEsc = String(props.regio ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const formattedDate = props.measured_time
-    ? new Date(props.measured_time).toLocaleString('nl-NL', {
-      timeZone: 'GMT',
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-    : 'Onbekend';
-  const color = getColor(props.value ?? 0, props.property ?? '', '1');
-  const popupHtml = `
-    <div class="card text-center" style="border-color: ${color};">
-      <div class="card-header" style="background-color: ${color}; color: white;">
-        <h6>Station naam: ${stationNameEsc}</h6>
-      </div>
-      <div class="card-body">
-        <h6 class="card-title">Component en meetwaarde:<br>${propertyEsc}: ${valueEsc} ${unitEsc}</h6>
-        <h6>Beschrijving:<br>Gemeente ${gemeenteEsc} - Regio ${regioEsc}</h6>
-        <h6 class="card-text">
-          <small class="text-muted">Laatst update: ${formattedDate}</small>
-        </h6>
-        <button class="btn mt-3" type="button" data-bs-toggle="modal" data-bs-target="#modalWithBothOptions" style="background-color: ${color}; color: white;" data-properties='${encodeURIComponent(
-          JSON.stringify(props),
-        )}'>
-          Informatie over station
-        </button>
-      </div>
-    </div>
-  `;
-  const popup = new window.maplibregl.Popup({ className: 'my-popup' })
-    .setLngLat(e.lngLat)
-    .setHTML(popupHtml)
-    .addTo(m);
-  // Attach click event to load chart
-  nextTick(() => {
-    const button = popup.getElement().querySelector('button');
-    if (button) {
-      button.addEventListener('click', async () => {
-        button.innerHTML =
-          '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">Loading...</span>';
-        try {
-          await loadChart(props);
-        } finally {
-          button.innerHTML = 'Informatie over station';
-          popup.remove();
-        }
-      });
-    }
-  });
-}
-
-/**
- * Destroy the existing chart instance if present. Use this before creating
- * a new chart to avoid memory leaks.
- */
-function destroyChart() {
-  if (state.myChart) {
-    state.myChart.destroy();
-    state.myChart = null;
-  }
-}
-
-/**
- * Load observation data for the selected station and create a chart in the
- * modal. This function fetches the data, processes it by date and hour,
- * generates datasets and then instantiates the Chart.js chart.
- *
- * TODO: Chart creation logic could be moved into a dedicated composable or
- * service module (e.g. `useChart`) to encapsulate data processing and chart
- * configuration. This would make the main component leaner and facilitate
- * unit testing of chart logic.
- *
- * @param {FeatureProperties} props
- */
-async function loadChart(props) {
-  destroyChart();
-  try {
-    const url = new URL(
-      `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${encodeURIComponent(
-        props.station_name ?? '',
-      )}&property=${encodeURIComponent(props.property ?? '')}&location=${encodeURIComponent(props.location_uuid ?? '')}`,
-    );
-    const observationData = await fetchData(url.toString());
-    const dataByDate = processData(observationData);
-    const datasets = createDatasets(props.property ?? '', dataByDate);
-    // Wait for DOM to update before referencing chart canvas
-    nextTick(() => {
-      const chartCanvas = stationModal.value?.chartRef?.value;
-      if (chartCanvas) {
-        createChart(chartCanvas, props.property ?? '', dataByDate, datasets);
-      }
-    });
-  } catch (error) {
-    console.error('Error while loading chart', error);
-  }
-}
-
-/**
- * Convert observation FeatureCollection into a map keyed by date. Each
- * entry holds arrays of times and corresponding values per hour.
- *
- * @param {FeatureCollection} observationData
- * @returns {Record<string, { times: string[], values: (number | null)[] }>}
- */
-function processData(observationData) {
-  const dataByDate = {};
-  (observationData.features ?? observationData.Features ?? []).forEach((feature) => {
-    const dateObj = new Date(feature.properties.measured_time ?? '');
-    const dateString = dateObj.toISOString().split('T')[0];
-    const hourIndex = dateObj.getUTCHours();
-    if (!dataByDate[dateString]) {
-      dataByDate[dateString] = {
-        times: Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00 GMT`),
-        values: Array(24).fill(null),
-      };
-    }
-    dataByDate[dateString].values[hourIndex] = feature.properties.value;
-  });
-  return dataByDate;
-}
-
-/**
- * Create chart datasets from processed data. Assign colours based on the
- * property and day of week. The most recent day is visible by default.
- *
- * @param {string} property
- * @param {Record<string, { times: string[], values: (number | null)[] }>} dataByDate
- * @returns {any[]}
- */
-function createDatasets(property, dataByDate) {
-  const keys = Object.keys(dataByDate);
-  return keys
-    .map((date, index) => {
-      const { values } = dataByDate[date];
-      const backgroundColors = values.map((val) => getColor(val ?? 0, property, '0.4'));
-      const dateObj = new Date(date);
-      return {
-        label: dateObj.toLocaleDateString('nl-NL', {
-          weekday: 'long',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }),
-        dateString: date,
-        data: values,
-        originalBackgroundColor: [...backgroundColors],
-        backgroundColor: backgroundColors,
-        borderColor: dayColors[dateObj.getDay()],
-        borderWidth: 2,
-        borderRadius: { topLeft: 3, topRight: 3 },
-        hidden: index !== keys.length - 1,
-      };
-    })
-    .sort((a, b) => new Date(a.dateString).getTime() - new Date(b.dateString).getTime());
-}
-
-/**
- * Instantiate a Chart.js bar chart using the provided datasets and options. It
- * registers hover handlers to adjust opacity on legend hover for improved
- * interactivity.
- *
- * @param {HTMLCanvasElement} canvas
- * @param {string} property
- * @param {Record<string, { times: string[], values: (number | null)[] }>} dataByDate
- * @param {any[]} datasets
- */
-function createChart(canvas, property, dataByDate, datasets) {
-  const yMin = property === 'pm25' ? 25 : 40;
-  state.myChart = new window.Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels: dataByDate[Object.keys(dataByDate)[0]].times,
-      datasets,
-    },
-    options: {
-      ...state.chartOptions,
-      plugins: {
-        ...state.chartOptions?.plugins,
-        annotation: {
-          annotations: [
-            {
-              type: 'box',
-              yMin,
-              backgroundColor: 'rgba(230, 25, 75, 0.1)',
-              borderColor: 'rgba(230, 25, 75, 1)',
-              label: {
-                content: 'Bad',
-                enabled: true,
-                position: 'center',
-              },
-            },
-          ],
-        },
-        legend: {
-          display: true,
-          onHover: (evt, item, legend) => handleHover(evt, item, legend),
-          onLeave: (evt, item, legend) => handleLeave(evt, item, legend),
-        },
-      },
-    },
-  });
-}
-
-/**
- * Handle hover on legend items by adjusting bar opacities. All datasets are
- * darkened except the hovered one which becomes more opaque.
- */
-function handleHover(evt, item, legend) {
-  legend.chart.data.datasets.forEach((dataset, datasetIndex) => {
-    dataset.backgroundColor = datasetIndex === item.datasetIndex
-      ? dataset.originalBackgroundColor.map((color) => {
-        const rgba = color.slice(0, -1).split(',');
-        rgba[3] = '0.8)';
-        return rgba.join(',');
-      })
-      : dataset.originalBackgroundColor.map((color) => {
-        const rgba = color.slice(0, -1).split(',');
-        rgba[3] = '0.1)';
-        return rgba.join(',');
-      });
-  });
-  legend.chart.update();
-}
-
-/**
- * Reset dataset opacities when the cursor leaves the legend.
- */
-function handleLeave(evt, item, legend) {
-  legend.chart.data.datasets.forEach((dataset) => {
-    dataset.backgroundColor = dataset.originalBackgroundColor;
-  });
-  legend.chart.update();
-}
-
-/**
- * Map a numeric pollutant value to a colour based on breakpoints. The
- * thresholds differ for pm25 vs pm10/no2. An alpha channel value (e.g.
- * '0.4', '1') can be supplied to control opacity. Colours are returned in
- * rgba() format.
- *
- * TODO: This helper could be extracted into a shared utils module if colour
- * mapping is required in other components.
- *
- * @param {number} value The measured pollutant value.
- * @param {string} property The pollutant type (pm25, pm10, no2).
- * @param {string} alpha A string representing the alpha channel (0-1).
- * @returns {string}
- */
-function getColor(value, property, alpha) {
-  const thresholds = property === 'pm25' ? [8.3, 16.7, 25, Infinity] : [13.3, 26.6, 40, Infinity];
-  const palette = [
-    'rgba(30, 144, 255,',
-    'rgba(72, 209, 204,',
-    'rgba(154, 205, 50,',
-    'rgba(218, 165, 32,',
-  ];
-  const index = thresholds.findIndex((t) => value < t);
-  const base = palette[index >= 0 && index < palette.length ? index : palette.length - 1];
-  return `${base}${alpha})`;
-}
-
-/**
- * Format a Date into a string like "Maandag | 1 januari 2024". This helper
- * centralises locale-specific formatting. The caller must provide a days
- * array (e.g. ['Zondag','Maandag',...]) corresponding to Dutch day names.
- *
- * TODO: This helper could be extracted into a shared utils module if date
- * formatting is required elsewhere.
- *
- * @param {Date} date The date to format.
- * @param {string[]} days A seven‑element array of day names starting with Sunday.
- * @returns {string}
- */
-function formatDate(date, days) {
-  const dayName = days[date.getDay()];
-  const dateString = date.toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  return `${dayName} | ${dateString}`;
-}
-
-/**
- * Show a toast notification and update the displayed time. This uses the
- * Bootstrap Toast API exposed on the DashboardToast component.
- */
 function toast() {
   const toastElement = toastPanel.value?.toastRef?.value;
   if (!toastElement) return;
@@ -1349,9 +351,6 @@ function toast() {
   toastInstance.show();
 }
 
-/**
- * Download the current GeoJSON as a file. Shows a toast when complete.
- */
 function downloadGeoJSON() {
   if (!geojson.value) return;
   const dataStr = JSON.stringify(geojson.value);
@@ -1365,10 +364,6 @@ function downloadGeoJSON() {
   document.body.removeChild(link);
 }
 
-/**
- * Download the current data as a CSV file. Missing values are marked as
- * 'N/A'. A toast is shown after download begins.
- */
 function downloadCSV() {
   if (!geojson.value) return;
   const header = 'Station naam;Datum en tijd;Property;Regio;Gemeente;Value;Unit\n';
