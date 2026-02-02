@@ -352,83 +352,98 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, watch, computed, defineProps, defineEmits, defineExpose } from 'vue';
 
 /**
- * Represents a single checkbox option (e.g. regio, gemeente, station). Each
- * option holds its identifier, display label and checked state.
+ * @typedef {Object} OptionItem
+ * @property {string} id
+ * @property {string} label
+ * @property {boolean} checked
  */
-interface OptionItem {
-  id: string;
-  label: string;
-  checked: boolean;
-}
-
-type OptionGroup = 'regio' | 'gemeente' | 'stationName';
-
-type InterpolationStatus = 'disable' | 'activate';
 
 // Define component props with full type information. This allows consumers
 // of the component to see what data they must provide and enables better
 // intellisense in editors.
-const props = defineProps<{
-  regio: OptionItem[];
-  gemeente: OptionItem[];
-  stationName: OptionItem[];
-  search: string;
-  interpolationStatus: InterpolationStatus;
-  isLocalFile: boolean;
-  fileName: string;
-}>();
+const props = defineProps({
+  regio: {
+    type: Array,
+    default: () => [],
+  },
+  gemeente: {
+    type: Array,
+    default: () => [],
+  },
+  stationName: {
+    type: Array,
+    default: () => [],
+  },
+  search: {
+    type: String,
+    default: '',
+  },
+  interpolationStatus: {
+    type: String,
+    default: 'disable',
+    validator: (value) => ['disable', 'activate'].includes(value),
+  },
+  isLocalFile: {
+    type: Boolean,
+    default: false,
+  },
+  fileName: {
+    type: String,
+    default: '',
+  },
+});
 
 // Define custom events emitted by this component. Using defineEmits makes
 // event signatures explicit and helps catch typos when emitting events.
-const emit = defineEmits<{
-  (e: 'update-layer'): void;
-  (e: 'select-matching-stations'): void;
-  (e: 'update:search', value: string): void;
-  (e: 'update:interpolationStatus', value: string): void;
-  (e: 'update:regio', value: OptionItem[]): void;
-  (e: 'update:gemeente', value: OptionItem[]): void;
-  (e: 'update:stationName', value: OptionItem[]): void;
-  (e: 'clear-input', refName: string): void;
-  (e: 'download-geojson'): void;
-  (e: 'download-csv'): void;
-}>();
+const emit = defineEmits([
+  'update-layer',
+  'select-matching-stations',
+  'update:search',
+  'update:interpolationStatus',
+  'update:regio',
+  'update:gemeente',
+  'update:stationName',
+  'clear-input',
+  'download-geojson',
+  'download-csv',
+]);
 
 /**
  * Local copies of the option lists to avoid mutating props directly. These
  * lists emit updates to the parent whenever a checkbox is toggled.
  */
-const regioOptions = ref<OptionItem[]>([]);
-const gemeenteOptions = ref<OptionItem[]>([]);
-const stationOptions = ref<OptionItem[]>([]);
+const regioOptions = ref([]);
+const gemeenteOptions = ref([]);
+const stationOptions = ref([]);
 
-function cloneOptions(options: OptionItem[]): OptionItem[] {
+function cloneOptions(options) {
   return options.map((option) => ({ ...option }));
 }
 
 watch(
-    () => props.regio,
-    (val) => {
-      regioOptions.value = cloneOptions(val);
-    },
-    { immediate: true, deep: true },
+  () => props.regio,
+  (val) => {
+    regioOptions.value = cloneOptions(val);
+  },
+  { immediate: true, deep: true },
 );
 watch(
-    () => props.gemeente,
-    (val) => {
-      gemeenteOptions.value = cloneOptions(val);
-    },
-    { immediate: true, deep: true },
+  () => props.gemeente,
+  (val) => {
+    gemeenteOptions.value = cloneOptions(val);
+  },
+  { immediate: true, deep: true },
 );
 watch(
-    () => props.stationName,
-    (val) => {
-      stationOptions.value = cloneOptions(val);
-    },
-    { immediate: true, deep: true },
+  () => props.stationName,
+  (val) => {
+    stationOptions.value = cloneOptions(val);
+  },
+  { immediate: true, deep: true },
 );
 
 /**
@@ -440,21 +455,21 @@ const searchValue = ref(props.search);
 
 // Keep local search in sync with the prop if it changes from the parent.
 watch(
-    () => props.search,
-    (val) => {
-      searchValue.value = val;
-    },
+  () => props.search,
+  (val) => {
+    searchValue.value = val;
+  },
 );
 
 // When the user types in the search box, emit updates to the parent and
 // request selection filtering. A small debounce could be added here if
 // performance becomes an issue.
 watch(
-    searchValue,
-    (val) => {
-      emit('update:search', val);
-      emit('select-matching-stations');
-    },
+  searchValue,
+  (val) => {
+    emit('update:search', val);
+    emit('select-matching-stations');
+  },
 );
 
 /**
@@ -465,20 +480,20 @@ const interpolationValue = ref(props.interpolationStatus);
 
 // Keep local interpolation status in sync with the prop.
 watch(
-    () => props.interpolationStatus,
-    (val) => {
-      interpolationValue.value = val;
-    },
+  () => props.interpolationStatus,
+  (val) => {
+    interpolationValue.value = val;
+  },
 );
 
 // Whenever the local interpolation status changes, propagate the change and
 // request the layer to be reloaded.
 watch(
-    interpolationValue,
-    (val) => {
-      emit('update:interpolationStatus', val);
-      emit('update-layer');
-    },
+  interpolationValue,
+  (val) => {
+    emit('update:interpolationStatus', val);
+    emit('update-layer');
+  },
 );
 
 /**
@@ -486,37 +501,43 @@ watch(
  * options or a placeholder when no data is available.
  */
 const regioBadge = computed(() =>
-    regioOptions.value.length > 0 ? regioOptions.value.length.toString() : 'Geen gegevens',
+  regioOptions.value.length > 0 ? regioOptions.value.length.toString() : 'Geen gegevens',
 );
 const gemeenteBadge = computed(() =>
-    gemeenteOptions.value.length > 0 ? gemeenteOptions.value.length.toString() : 'Geen gegevens',
+  gemeenteOptions.value.length > 0 ? gemeenteOptions.value.length.toString() : 'Geen gegevens',
 );
 const stationBadge = computed(() =>
-    stationOptions.value.length > 0 ? stationOptions.value.length.toString() : 'Geen gegevens',
+  stationOptions.value.length > 0 ? stationOptions.value.length.toString() : 'Geen gegevens',
 );
 
 /**
  * Utility to determine the badge CSS class based on the length of the list.
+ *
+ * @param {OptionItem[]} list
+ * @returns {string}
  */
-function getBadgeClass(list: OptionItem[]) {
+function getBadgeClass(list) {
   return list.length === 0
-      ? 'badge rounded-pill bg-danger'
-      : 'badge rounded-pill bg-primary';
+    ? 'badge rounded-pill bg-danger'
+    : 'badge rounded-pill bg-primary';
 }
 
 /**
  * Handler for search input. Updates the local search value. Could be replaced
  * with v-model on the input but using an explicit handler improves testability.
  */
-function onSearchInput(event: Event): void {
-  searchValue.value = (event.target as HTMLInputElement).value;
+function onSearchInput(event) {
+  const target = event.target;
+  if (target) {
+    searchValue.value = target.value;
+  }
 }
 
 /**
  * Handler for radio button changes in the interpolation section. Update the
  * local interpolation value which will cascade through watchers.
  */
-function onInterpolationChange(value: InterpolationStatus): void {
+function onInterpolationChange(value) {
   interpolationValue.value = value;
 }
 
@@ -525,7 +546,7 @@ function onInterpolationChange(value: InterpolationStatus): void {
  * anonymous function on every checkbox. It improves performance and
  * readability by centralising the emit logic.
  */
-function emitUpdateLayer(): void {
+function emitUpdateLayer() {
   emit('update-layer');
 }
 
@@ -533,16 +554,17 @@ function emitUpdateLayer(): void {
  * Handle checkbox toggles without mutating prop data. Updates the local list,
  * emits the updated list to the parent, and requests a layer refresh.
  */
-function onToggle(group: OptionGroup, id: string, event: Event): void {
-  const checked = (event.target as HTMLInputElement).checked;
+function onToggle(group, id, event) {
+  const target = event.target;
+  const checked = target ? target.checked : false;
   const list =
-      group === 'regio'
-          ? regioOptions
-          : group === 'gemeente'
-              ? gemeenteOptions
-              : stationOptions;
+    group === 'regio'
+      ? regioOptions
+      : group === 'gemeente'
+        ? gemeenteOptions
+        : stationOptions;
   const nextList = list.value.map((option) =>
-      option.id === id ? { ...option, checked } : option,
+    option.id === id ? { ...option, checked } : option,
   );
   list.value = nextList;
   if (group === 'regio') {
@@ -559,7 +581,7 @@ function onToggle(group: OptionGroup, id: string, event: Event): void {
  * Provide a ref for the local file input. The parent can reset this input
  * via the clear-input event.
  */
-const localFileRef = ref<HTMLInputElement | null>(null);
+const localFileRef = ref(null);
 
 defineExpose({ localFileRef });
 </script>

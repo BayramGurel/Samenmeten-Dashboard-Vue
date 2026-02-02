@@ -209,42 +209,71 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 
-/**
- * Props accepted by the DashboardLegendTabs component. Each prop is typed to
- * improve maintainability and developer experience. The component does not
- * modify incoming props directly but instead uses local refs when needed.
- */
-const props = defineProps<{
-  timeValue: number | string;
-  selectedDay: string;
-  selectedProperty: string;
-  dayNames: string[];
-  isPlaying: boolean;
-  buttonClass: string;
-  formattedProperty: string;
-  legendaValues: (string | number)[];
-  colors: string[];
-  concentrationValues: (string | number)[];
-  isFrom: string;
-}>();
+// Props accepted by the DashboardLegendTabs component. Each prop is typed to
+// improve maintainability and developer experience. The component does not
+// modify incoming props directly but instead uses local refs when needed.
+const props = defineProps({
+  timeValue: {
+    type: [Number, String],
+    default: 0,
+  },
+  selectedDay: {
+    type: String,
+    default: '',
+  },
+  selectedProperty: {
+    type: String,
+    default: 'pm25',
+  },
+  dayNames: {
+    type: Array,
+    default: () => [],
+  },
+  isPlaying: {
+    type: Boolean,
+    default: false,
+  },
+  buttonClass: {
+    type: String,
+    default: 'btn-outline-primary',
+  },
+  formattedProperty: {
+    type: String,
+    default: '',
+  },
+  legendaValues: {
+    type: Array,
+    default: () => [],
+  },
+  colors: {
+    type: Array,
+    default: () => [],
+  },
+  concentrationValues: {
+    type: Array,
+    default: () => [],
+  },
+  isFrom: {
+    type: String,
+    default: '',
+  },
+});
 
-/**
- * Events emitted by this component. Explicitly defining the events helps
- * catch typos and offers autocompletion in editors.
- */
-const emit = defineEmits<{
-  (e: 'reload-page'): void;
-  (e: 'update-layer'): void;
-  (e: 'stop-slider'): void;
-  (e: 'toggle-slider'): void;
-  (e: 'clear-input', field: string): void;
-  (e: 'update:timeValue', value: number | string): void;
-  (e: 'update:selectedDay', value: string): void;
-  (e: 'update:selectedProperty', value: string): void;
-}>();
+// Events emitted by this component. Explicitly defining the events helps
+// catch typos and offers autocompletion in editors.
+const emit = defineEmits([
+  'reload-page',
+  'update-layer',
+  'stop-slider',
+  'toggle-slider',
+  'clear-input',
+  'update:timeValue',
+  'update:selectedDay',
+  'update:selectedProperty',
+]);
 
 /**
  * Local reactive copy of timeValue. This prevents direct prop mutation. When
@@ -253,10 +282,10 @@ const emit = defineEmits<{
  */
 const timeValueLocal = ref(props.timeValue);
 watch(
-    () => props.timeValue,
-    (val) => {
-      timeValueLocal.value = val;
-    },
+  () => props.timeValue,
+  (val) => {
+    timeValueLocal.value = val;
+  },
 );
 // Emit updates when local time value changes. The parent decides how to
 // interpret and coerce the value (string vs number).
@@ -270,10 +299,10 @@ watch(timeValueLocal, (val) => {
  */
 const selectedDayLocal = ref(props.selectedDay);
 watch(
-    () => props.selectedDay,
-    (val) => {
-      selectedDayLocal.value = val;
-    },
+  () => props.selectedDay,
+  (val) => {
+    selectedDayLocal.value = val;
+  },
 );
 watch(selectedDayLocal, (val) => {
   emit('update:selectedDay', val);
@@ -286,7 +315,7 @@ watch(selectedDayLocal, (val) => {
  * current playing state. This removes duplicated logic from the template.
  */
 const playIconClass = computed(() =>
-    props.isPlaying ? 'bi bi-pause-circle-fill' : 'bi bi-google-play',
+  props.isPlaying ? 'bi bi-pause-circle-fill' : 'bi bi-google-play',
 );
 const playButtonText = computed(() => (props.isPlaying ? 'Pauzeren' : 'Afspelen'));
 
@@ -296,10 +325,10 @@ const playButtonText = computed(() => (props.isPlaying ? 'Pauzeren' : 'Afspelen'
  */
 const selectedPropertyLocal = ref(props.selectedProperty);
 watch(
-    () => props.selectedProperty,
-    (val) => {
-      selectedPropertyLocal.value = val;
-    },
+  () => props.selectedProperty,
+  (val) => {
+    selectedPropertyLocal.value = val;
+  },
 );
 watch(selectedPropertyLocal, (val) => {
   emit('update:selectedProperty', val);
@@ -315,7 +344,7 @@ const logoSrc = computed(() => require('@/assets/PZH-logo.png'));
  * Emit a layer update. Centralising this call avoids creating inline
  * functions on template bindings.
  */
-function emitUpdateLayer(): void {
+function emitUpdateLayer() {
   emit('update-layer');
 }
 
@@ -323,28 +352,34 @@ function emitUpdateLayer(): void {
  * Handle changes to the time slider. Update the local time value. The
  * watchers will propagate the change to the parent.
  */
-function onTimeInput(event: Event): void {
-  const target = event.target as HTMLInputElement;
+function onTimeInput(event) {
+  const target = event.target;
   // Note: range inputs emit strings by default. Leave coercion to parent.
-  timeValueLocal.value = target.value;
+  if (target) {
+    timeValueLocal.value = target.value;
+  }
 }
 
 /**
  * Handle day input changes. Update the local selected day. Emission of
  * updates happens in watchers.
  */
-function onDayInput(event: Event): void {
-  const target = event.target as HTMLInputElement;
-  selectedDayLocal.value = target.value;
+function onDayInput(event) {
+  const target = event.target;
+  if (target) {
+    selectedDayLocal.value = target.value;
+  }
 }
 
 /**
  * Handle property selection changes and trigger a layer update.
  */
-function onPropertyChange(event: Event): void {
-  const target = event.target as HTMLSelectElement;
-  selectedPropertyLocal.value = target.value;
-  emit('update-layer');
+function onPropertyChange(event) {
+  const target = event.target;
+  if (target) {
+    selectedPropertyLocal.value = target.value;
+    emit('update-layer');
+  }
 }
 </script>
 

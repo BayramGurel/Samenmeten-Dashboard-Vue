@@ -220,41 +220,50 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { computed, defineProps } from 'vue';
 
 /**
- * Type definition for a GeoJSON Feature with relevant properties. Extend this
- * interface as needed to include other properties available in your data.
+ * @typedef {Object} FeatureProperties
+ * @property {string=} station_name
+ * @property {number | string=} avg_value
+ * @property {number | string=} max_value
+ * @property {number | string=} min_value
+ * @property {Object<string, any>=} [key]
  */
-interface FeatureProperties {
-  station_name?: string;
-  avg_value?: number | string;
-  max_value?: number | string;
-  min_value?: number | string;
-  [key: string]: unknown;
-}
 
-interface Feature {
-  properties: FeatureProperties;
-  // geometry and other fields are omitted here since they are not used
-}
+/**
+ * @typedef {Object} Feature
+ * @property {FeatureProperties} properties
+ */
 
-interface FeatureCollection {
-  features: Feature[];
-}
+/**
+ * @typedef {Object} FeatureCollection
+ * @property {Feature[]} features
+ */
 
 // Define props accepted by this component. Destructure them via setup script.
-const props = defineProps<{
-  geojson: FeatureCollection | null;
-  formattedProperty: string;
-  description: string;
-}>();
+const props = defineProps({
+  geojson: {
+    type: Object,
+    default: null,
+  },
+  formattedProperty: {
+    type: String,
+    default: '',
+  },
+  description: {
+    type: String,
+    default: '',
+  },
+});
 
 /**
  * Compute the rows for the table from the provided GeoJSON. This computed
  * property ensures that any updates to props.geojson automatically
  * recompute the rows without extra watchers.
+ *
+ * @returns {Feature[]}
  */
 const tableRows = computed(() => {
   return props.geojson?.features ?? [];

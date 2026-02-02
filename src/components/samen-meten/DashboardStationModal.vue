@@ -49,7 +49,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, defineProps, defineExpose } from 'vue';
 
 /**
@@ -57,23 +57,20 @@ import { ref, defineProps, defineExpose } from 'vue';
  * interface if additional fields are needed. Using `undefined` on optional
  * properties allows for graceful handling of missing data.
  */
-interface StationProperties {
-  station_name?: string;
-  Gemeente?: string;
-  regio?: string;
-  // Other properties from the API can be added here if needed
-}
-
-// Define the component props with their types. The parent component should
-// ensure that `formattedProperty` and `properties` are provided correctly.
-const props = defineProps<{
-  formattedProperty: string;
-  properties: StationProperties;
-}>();
+const props = defineProps({
+  formattedProperty: {
+    type: String,
+    default: '',
+  },
+  properties: {
+    type: Object,
+    default: () => ({}),
+  },
+});
 
 // Reference to the canvas element. The parent is responsible for creating
 // and destroying the Chart.js instance, using this ref to access the canvas.
-const chartRef = ref<HTMLCanvasElement | null>(null);
+const chartRef = ref(null);
 
 // Expose the chart reference so that the parent can access it via the
 // component's instance (e.g. using `ref="stationModal"`).

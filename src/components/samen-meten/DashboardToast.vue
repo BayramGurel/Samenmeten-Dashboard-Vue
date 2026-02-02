@@ -32,24 +32,23 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { defineProps, ref, defineExpose } from 'vue';
 
-/**
- * Props accepted by DashboardToast. Only a timestamp string is required. A
- * future enhancement could include custom messages or types (success,
- * error) and use those to adjust styling dynamically.
- */
-const props = defineProps<{
-  timeString: string;
-}>();
+// Props accepted by DashboardToast. Only a timestamp string is required. A
+// future enhancement could include custom messages or types (success,
+// error) and use those to adjust styling dynamically.
+const props = defineProps({
+  timeString: {
+    type: String,
+    default: '',
+  },
+});
 
-/**
- * Reference to the underlying toast element. The parent component should
- * access this ref via `$refs.toastPanel?.toastRef` and then create a
- * Bootstrap Toast instance (e.g. `bootstrap.Toast.getOrCreateInstance`).
- */
-const toastRef = ref<HTMLDivElement | null>(null);
+// Reference to the underlying toast element. The parent component should
+// access this ref via `$refs.toastPanel?.toastRef` and then create a
+// Bootstrap Toast instance (e.g. `bootstrap.Toast.getOrCreateInstance`).
+const toastRef = ref(null);
 
 // Expose the ref to allow the parent to manipulate the toast directly
 defineExpose({ toastRef });
