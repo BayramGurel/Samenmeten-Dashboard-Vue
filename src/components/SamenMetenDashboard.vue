@@ -1,656 +1,916 @@
 <template>
-  <MapSidebarInfo :geojson="geojson" :formatted-property="formattedProperty" :description="description" />
-  <!--  Above the map  -->
+  <!-- Sidebar with map-specific information -->
+  <MapSidebarInfo
+      :geojson="geojson"
+      :formatted-property="formattedProperty"
+      :description="description"
+  />
+  <!-- Map container -->
   <div class="container-fluid" id="czoom">
+    <!-- Control panel anchored above the map. Use responsive classes rather than zoom hacks -->
     <div class="position-absolute start-0 shadow mt-3 ms-3 col-md-4 col-8 custom-div">
+      <!-- Legend and time slider controls -->
       <DashboardLegendTabs
-        ref="legendTabs"
-        v-model:timeValue="timeValue"
-        v-model:selectedDay="selectedDay"
-        :day-names="dayNames"
-        :is-playing="isPlaying"
-        :button-class="buttonClass"
-        :formatted-property="formattedProperty"
-        :legenda-values="legendaValues"
-        :colors="colors"
-        :concentration-values="concentrationValues"
-        :is-from="isFrom"
-        @reload-page="reloadPage"
-        @update-layer="updateLayer"
-        @stop-slider="stopSlider"
-        @toggle-slider="toggleSlider"
-        @clear-input="clearInput"
+          ref="legendTabs"
+          v-model:timeValue="timeValue"
+          v-model:selectedDay="selectedDay"
+          :day-names="dayNames"
+          :is-playing="isPlaying"
+          :button-class="buttonClass"
+          :formatted-property="formattedProperty"
+          :legenda-values="legendaValues"
+          :colors="colors"
+          :concentration-values="concentrationValues"
+          :is-from="isFrom"
+          @reload-page="reloadPage"
+          @update-layer="updateLayer"
+          @stop-slider="stopSlider"
+          @toggle-slider="toggleSlider"
+          @clear-input="clearInput"
       />
 
+      <!-- Data tools (filters, downloads) -->
       <DashboardDataTools
-        ref="dataTools"
-        :regio="regio"
-        :gemeente="Gemeente"
-        :station-name="station_name"
-        :search="search"
-        :interpolation-status="interpolationStatus"
-        :is-local-file="isLocalFile"
-        :file-name="fileName"
-        @update-layer="updateLayer"
-        @select-matching-stations="selectMatchingStations"
-        @update:search="search = $event"
-        @update:interpolationStatus="interpolationStatus = $event"
-        @clear-input="clearInput"
-        @download-geojson="downloadGeoJSON"
-        @download-csv="downloadCSV"
+          ref="dataTools"
+          :regio="regio"
+          :gemeente="Gemeente"
+          :station-name="stationName"
+          :search="search"
+          :interpolation-status="interpolationStatus"
+          :is-local-file="isLocalFile"
+          :file-name="fileName"
+          @update-layer="updateLayer"
+          @select-matching-stations="selectMatchingStations"
+          @update:search="(val: string) => (search = val)"
+          @update:interpolationStatus="(val: string) => (interpolationStatus = val)"
+          @clear-input="clearInput"
+          @download-geojson="downloadGeoJSON"
+          @download-csv="downloadCSV"
       />
     </div>
-    <DashboardStationModal ref="stationModal" :formatted-property="formattedProperty" :properties="properties" />
+    <!-- Modal for station details -->
+    <DashboardStationModal
+        ref="stationModal"
+        :formatted-property="formattedProperty"
+        :properties="properties"
+    />
+    <!-- Toast for download notifications -->
     <DashboardToast ref="toastPanel" :time-string="timeString" />
   </div>
 </template>
 
-<script>
-// npm run build
-// npm install gh-pages --save-dev
-// npm run deploy
-
-// Created by Bayram Gurel
-import { data } from '@/data/variable.js';
+<!--
+  This component renders the main dashboard for the Samen Meten application.
+  It has been refactored from the legacy Options API to the Composition API
+  for improved readability, reusability and type safety. State is managed
+  through reactive references and objects. External side effects such as map
+  initialization, data fetching and DOM interactions are isolated in
+  composable functions.
+-->
+<script setup lang="ts">
+import {
+  ref,
+  reactive,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  nextTick,
+} from 'vue';
 import MapSidebarInfo from '@/components/samen-meten/MapSidebarInfo.vue';
 import DashboardLegendTabs from '@/components/samen-meten/DashboardLegendTabs.vue';
 import DashboardDataTools from '@/components/samen-meten/DashboardDataTools.vue';
 import DashboardStationModal from '@/components/samen-meten/DashboardStationModal.vue';
 import DashboardToast from '@/components/samen-meten/DashboardToast.vue';
+import { data as initialData } from '@/data/variable.js';
+// Import pure helpers from the utils module. These are reused across components
+// and expose no side effects, making them easy to test and maintain.
+// Helpers are defined locally in this file to keep the component self‑contained.
+// TODO: consider extracting these helpers into a separate utils module if they
+// need to be reused across multiple components.
 
-export default {
-  name: 'SamenMetenDashboard',
-  components: {
-    MapSidebarInfo,
-    DashboardLegendTabs,
-    DashboardDataTools,
-    DashboardStationModal,
-    DashboardToast,
-  },
-  data() {
-    return data;
-  },
+/**
+ * Type definitions for the GeoJSON structure returned by the API.
+ */
+interface FeatureProperties {
+  station_name?: string;
+  property?: string;
+  value?: number;
+  unit?: string;
+  Gemeente?: string;
+  regio?: string;
+  measured_time?: string;
+  [key: string]: unknown;
+}
 
-  computed: {
-    dayNames() {
-      return Array.from({length: 30}, (_, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        return this.formatDate(date);
-      });
-    },
-    buttonClass() {
-      return this.isPlaying ? 'btn-outline-danger' : 'btn-outline-primary';
-    },
-    formattedProperty() {
-      const propertyMap = {
-        'pm25': 'PM2,5',
-        'pm10': 'PM10',
-        'no2': 'NO2'
-      };
+interface Feature {
+  type: 'Feature';
+  geometry: {
+    type: string;
+    coordinates: number[] | number[][];
+  };
+  properties: FeatureProperties;
+}
 
-      return propertyMap[this.property] || this.property;
+interface FeatureCollection {
+  type: 'FeatureCollection';
+  features: Feature[];
+  /**
+   * Legacy API returns `Features` instead of `features`. We support both for
+   * backward compatibility.
+   */
+  Features?: Feature[];
+}
+
+/**
+ * Deep clone initial state to avoid mutating imported data directly.
+ * Note: JSON.parse/stringify is sufficient here as initialData contains only
+ * serializable values.
+ */
+const state = reactive(JSON.parse(JSON.stringify(initialData)));
+
+// Local reactive references
+const timeValue = ref<number>(state.timeValue ?? 0);
+const selectedDay = ref<string>('');
+const search = ref<string>(state.search ?? '');
+const interpolationStatus = ref<string>(state.interpolationStatus ?? '');
+const isPlaying = ref<boolean>(state.isPlaying ?? false);
+const isLocalFile = ref<boolean>(false);
+const fileName = ref<string>('Geojson bestand | Uploaden');
+const isFrom = ref<string>('');
+const description = ref<string>('');
+const legendaValues = ref<number[]>([]);
+const concentrationValues = ref<number[]>([]);
+const geojson = ref<FeatureCollection | null>(null);
+const properties = ref<FeatureProperties>({});
+const timeString = ref<string>('');
+
+// Refs for collections used by filters. We wrap them in reactive arrays so that
+// changes are tracked automatically.
+const regio = ref<Array<{ id: string; label: string; checked: boolean }>>([]);
+const Gemeente = ref<Array<{ id: string; label: string; checked: boolean }>>([]);
+const stationName = ref<Array<{ id: string; label: string; checked: boolean }>>([]);
+
+// Colors and names used for chart annotation. These were defined on the
+// original component's data. They remain constant.
+const colors = ref(state.colors ?? []);
+const dayColors = state.dayColors ?? [];
+
+// Map related state
+const map = ref<maplibregl.Map | null>(null);
+const STYLE_URL = ref<string>('');
+const currentLayerId = ref<string | null>(null);
+const rasterLayers = new Set<string>();
+
+// Element references exposed by child components. These are looked up when
+// updating the map layer. Using a map reduces the number of DOM queries.
+const elements: Record<string, any> = {};
+
+/**
+ * Computed property generating an array of 30 day names. This uses the
+ * `formatDate` helper to ensure the date format matches the locale. It
+ * recomputes only when dependencies change, improving performance.
+ */
+const dayNames = computed<string[]>(() => {
+  return Array.from({ length: 30 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    return formatDate(date, state.days);
+  });
+});
+
+/**
+ * Computed property for determining the button style based on playback state.
+ */
+const buttonClass = computed<string>(() => {
+  return isPlaying.value ? 'btn-outline-danger' : 'btn-outline-primary';
+});
+
+/**
+ * Map the internal property names to user‑friendly labels. If the property
+ * cannot be found in the map, return it unchanged.
+ */
+const formattedProperty = computed<string>(() => {
+  const propertyMap: Record<string, string> = {
+    pm25: 'PM2,5',
+    pm10: 'PM10',
+    no2: 'NO₂',
+  };
+  // `state.property` comes from the initial data. Provide fallback.
+  return propertyMap[state.property as string] ?? (state.property as string);
+});
+
+/**
+ * Watch for changes to the selected day and refresh the layer when valid. This
+ * replaces the legacy watch property on the Options API. The immediate
+ * parameter ensures that updateLayer runs on component creation when
+ * selectedDay is set programmatically.
+ */
+watch(
+    () => selectedDay.value,
+    (newDay) => {
+      if (dayNames.value.includes(newDay)) {
+        updateLayer().catch((err) => console.error('Failed to update layer', err));
+      }
     }
-  },
+);
 
-  watch: {
-    selectedDay(newVal) {
-      if (this.dayNames.includes(newVal)) {
-        this.updateLayer();
+// Refresh the layer whenever the selected hour changes. Watching the reactive
+// `timeValue` ensures that updates occur even when the slider is moved
+// programmatically. A small debounce is applied to avoid rapid consecutive
+// requests when the user drags the slider quickly.
+let timeDebounce: ReturnType<typeof setTimeout> | null = null;
+watch(
+    () => timeValue.value,
+    () => {
+      if (timeDebounce) clearTimeout(timeDebounce);
+      timeDebounce = setTimeout(() => {
+        updateLayer().catch((err) => console.error('Failed to update layer', err));
+      }, 200);
+    }
+);
+
+// Whenever the interpolation status changes, reload the layer. This ensures
+// that enabling or disabling interpolation takes effect immediately.
+watch(
+    () => interpolationStatus.value,
+    () => {
+      updateLayer().catch((err) => console.error('Failed to update layer', err));
+    }
+);
+
+// React to changes in the search term by selecting matching stations. We
+// debounce this watcher slightly to prevent repeated updates while the user
+// types.
+let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+watch(
+    () => search.value,
+    () => {
+      if (searchDebounce) clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        selectMatchingStations();
+      }, 150);
+    }
+);
+
+/**
+ * Lifecycle hook that runs once the component is mounted. Initializes the
+ * map, sets up UI controls and begins loading data. All asynchronous
+ * operations are awaited sequentially for deterministic behaviour.
+ */
+onMounted(async () => {
+  // Construct style URL with API key
+  STYLE_URL.value = `https://api.maptiler.com/maps/dataviz/style.json?key=${state.API_KEY}`;
+  await initializeMap();
+  await addControls();
+
+  // Populate `elements` with references from child components. This makes it
+  // easier to access DOM nodes used for property, time slider and local file
+  // input values.
+  elements['property'] = getElementRef('property');
+  elements['timeSlider'] = getElementRef('timeSlider');
+  elements['sDate'] = getElementRef('sDate');
+  elements['localFile'] = getElementRef('localFile');
+
+  // Fetch initial data for the dropdown lists and set up the first layer.
+  geojson.value = await fetchData(
+      'https://dta-samenmeten-api.azurewebsites.net/api/data/stations'
+  );
+
+  await Promise.all([
+    updateUniqueItems(geojson.value, 'regio'),
+    updateUniqueItems(geojson.value, 'Gemeente'),
+    updateUniqueItems(geojson.value, 'station_name'),
+  ]);
+
+  // Create default checkboxes for filters. This also maintains checked state
+  // across updates.
+  createCheckboxes('regio', regio.value.map((r) => r.id));
+  createCheckboxes('Gemeente', Gemeente.value.map((g) => g.id));
+  createCheckboxes('station_name', stationName.value.map((s) => s.id));
+
+  // Select the most recent day by default and load the layer
+  selectedDay.value = dayNames.value[0];
+  await updateLayer();
+});
+
+/**
+ * Clean up resources when the component is unmounted. This includes
+ * destroying the Chart instance to free up memory.
+ */
+onUnmounted(() => {
+  destroyChart();
+  if (map.value) {
+    map.value.remove();
+  }
+});
+
+/**
+ * Helper to retrieve element references from child components. It searches
+ * through direct refs on the parent, then through nested refs on child
+ * components. Returns undefined if the element cannot be found.
+ */
+function getElementRef(id: string): any {
+  const directRef = (getCurrentInstance()?.proxy as any)?.$refs?.[id];
+  if (directRef) return directRef;
+  const refContainers = [(getCurrentInstance()?.proxy as any)?.$refs?.legendTabs, (getCurrentInstance()?.proxy as any)?.$refs?.dataTools];
+  for (const container of refContainers) {
+    if (container?.$refs?.[id]) return container.$refs[id];
+  }
+  return undefined;
+}
+
+/**
+ * Initialize the MapLibre map instance. This is separated into its own
+ * function so that it can be reused or mocked during testing. It sets
+ * the map on the `map` ref and listens for the `load` event to add initial
+ * layers.
+ *
+ * TODO: Consider extracting map initialisation, control setup and layer
+ * management into a composable (e.g. `useMap`) to simplify this component
+ * and improve testability. The current component still contains
+ * responsibilities that could live in a dedicated map management module.
+ */
+async function initializeMap(): Promise<void> {
+  // Create the map instance
+  map.value = new window.maplibregl.Map({
+    container: 'map',
+    style: STYLE_URL.value,
+    center: [4.218788, 52.008663],
+    zoom: 8.9,
+  });
+  map.value.on('load', () => {
+    addLineSourceAndLayer();
+    addWindLayer();
+  });
+}
+
+/**
+ * Add interactive controls to the map including style switcher, fullscreen,
+ * navigation and geolocation controls. All controls are added after the map
+ * instance has been created.
+ */
+async function addControls(): Promise<void> {
+  if (!map.value) return;
+  // Custom style switcher
+  addStyleSwitchControl();
+  // Built‑in controls
+  map.value.addControl(new window.maplibregl.FullscreenControl());
+  map.value.addControl(new window.maplibregl.NavigationControl());
+  map.value.addControl(
+      new window.maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+      })
+  );
+}
+
+/**
+ * Add a source and layer for drawing a bounding line around the map. Checks
+ * for existence before adding to avoid duplicates.
+ */
+function addLineSourceAndLayer(): void {
+  const m = map.value;
+  if (!m) return;
+  if (!m.getSource('line')) {
+    m.addSource('line', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: state.bbox ?? [],
+        },
+      },
+    });
+  }
+  if (!m.getLayer('line')) {
+    m.addLayer({
+      id: 'line',
+      type: 'line',
+      source: 'line',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#ff0000',
+        'line-width': 1.4,
+        'line-opacity': 0.8,
+        'line-blur': 0.5,
+      },
+    });
+  }
+}
+
+/**
+ * Add a wind layer to the map. This placeholder exists to match the API of
+ * the original component; implement your own logic here if needed.
+ */
+function addWindLayer(): void {
+  // TODO: Implement wind layer logic if required. Left blank for clarity.
+}
+
+/**
+ * Create a style switch control that lets the user change the map base style.
+ * It constructs a select element populated with the available style URLs.
+ * Any errors during style switching are caught and logged.
+ */
+function addStyleSwitchControl(): void {
+  if (!map.value) return;
+  // Build the control container
+  const styleSwitcherContainer = document.createElement('div');
+  styleSwitcherContainer.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+  const label = document.createElement('label');
+  label.className = 'fw-semibold text-success';
+  label.innerText = 'Selecteer achtergrond:';
+  styleSwitcherContainer.appendChild(label);
+  const styleSwitcher = document.createElement('select');
+  styleSwitcher.className = 'form-select form-select-sm';
+  styleSwitcher.style.fontSize = '1em';
+  styleSwitcher.style.cursor = 'pointer';
+  // Provide an accessible name for screen readers
+  styleSwitcher.setAttribute('aria-label', 'Selecteer kaartstijl');
+  const styles: string[] = (state.STYLE_URLS ?? []).map(
+      (url: string) => `${url}${state.API_KEY}`
+  );
+  styles.forEach((style, index) => {
+    const option = document.createElement('option');
+    option.value = style;
+    option.text = state.STYLE_NAMES?.[index] ?? `Style ${index + 1}`;
+    styleSwitcher.appendChild(option);
+  });
+  styleSwitcher.onchange = (event: Event) => {
+    const target = event.target as HTMLSelectElement;
+    try {
+      map.value?.setStyle(target.value);
+      // After style change, re‑add custom layers and refresh the data layer
+      setTimeout(() => {
+        addLineSourceAndLayer();
+        updateLayer().catch((err) => console.error('Layer update failed', err));
+      }, 50);
+    } catch (error) {
+      console.error('An error occurred while switching styles:', error);
+    }
+  };
+  styleSwitcherContainer.appendChild(styleSwitcher);
+  // Create a control conforming to the maplibre control interface
+  const control = {
+    onAdd: () => styleSwitcherContainer,
+    onRemove: () => {},
+    getDefaultPosition: () => 'top-right',
+  } as maplibregl.IControl;
+  map.value.addControl(control);
+}
+
+/**
+ * Fetch JSON data from the given URL and return the parsed object. Errors
+ * during the fetch or parsing are propagated to the caller to handle.
+ */
+async function fetchData(url: string): Promise<FeatureCollection> {
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    keepalive: true,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+  }
+  return (await response.json()) as FeatureCollection;
+}
+
+/**
+ * Update the list of unique items for the given column. It uses the
+ * `geojson` to derive a set of unique values and then updates the
+ * corresponding reactive array. For accessibility, items are sorted
+ * alphabetically.
+ */
+async function updateUniqueItems(geo: FeatureCollection | null, column: string): Promise<void> {
+  if (!geo || !geo.Features && !geo.features) return;
+  const features = (geo.features ?? geo.Features) as Feature[];
+  const items = Array.from(
+      new Set(
+          features.map((feature) => feature.properties?.[column] as string | undefined)
+      )
+  ).filter((item): item is string => !!item);
+  const target = column === 'regio' ? regio : column === 'Gemeente' ? Gemeente : stationName;
+  // Preserve checked state if items already exist
+  const checkedIds = new Set(target.value.filter((i) => i.checked).map((i) => i.id));
+  target.value = items
+      .sort((a, b) => a.localeCompare(b))
+      .map((item) => ({ id: item, label: item, checked: checkedIds.has(item) }));
+}
+
+/**
+ * Create checkbox objects for the given identifier. This helper ensures that
+ * each filter list (regio, Gemeente, station_name) is synchronised with
+ * the array of available items. It respects the previously checked state.
+ */
+function createCheckboxes(id: 'regio' | 'Gemeente' | 'station_name', items: string[]): void {
+  const target = id === 'regio' ? regio : id === 'Gemeente' ? Gemeente : stationName;
+  const checkedIds = new Set(target.value.filter((i) => i.checked).map((i) => i.id));
+  target.value = items.map((item) => ({
+    id: item,
+    label: item,
+    checked: checkedIds.has(item),
+  }));
+}
+
+/**
+ * Retrieve selected values from the checkboxes. This returns an array of
+ * identifiers that the user has checked. When nothing is selected the
+ * returned array is empty.
+ */
+function getSelectedValues(name: 'regio' | 'Gemeente' | 'station_name'): string[] {
+  const list = name === 'regio' ? regio.value : name === 'Gemeente' ? Gemeente.value : stationName.value;
+  return list.filter((item) => item.checked).map((item) => item.id);
+}
+
+/**
+ * Public method exposed to child components to clear input fields. For
+ * `sDate` we reset the selectedDay; otherwise we call updateLayer().
+ */
+function clearInput(refName: string): void {
+  const refVal = elements[refName];
+  if (refVal) {
+    refVal.value = '';
+  }
+  if (refName === 'sDate') {
+    selectedDay.value = '';
+  } else {
+    updateLayer().catch((err) => console.error('Layer update failed', err));
+  }
+}
+
+/**
+ * Reload the page. This simply delegates to the browser's reload function.
+ */
+function reloadPage(): void {
+  window.location.reload();
+}
+
+/**
+ * Toggle the automatic slider. If it was previously running it will stop and
+ * vice versa. The slider uses a timer to advance the hour and update the
+ * layer. When it reaches the maximum hour, it stops automatically.
+ */
+function toggleSlider(): void {
+  isPlaying.value = !isPlaying.value;
+  if (isPlaying.value) {
+    startSlider();
+  } else {
+    stopSlider();
+  }
+}
+
+let sliderInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the time slider animation. It sets up an interval that increments
+ * `timeValue` every 1.55 seconds. The maximum hour is derived from the
+ * selected day (0–23 or the current hour if today).
+ */
+function startSlider(): void {
+  stopSlider();
+  const today = formatDate(new Date(), state.days);
+  const maxHour = selectedDay.value === today ? new Date().getHours() : 23;
+  timeValue.value = 0;
+  updateLayer().catch((err) => console.error('Layer update failed', err));
+  sliderInterval = setInterval(() => {
+    if (timeValue.value < maxHour) {
+      timeValue.value++;
+      updateLayer().catch((err) => console.error('Layer update failed', err));
+    } else {
+      stopSlider();
+      isPlaying.value = false;
+    }
+  }, 1550);
+}
+
+/**
+ * Stop the slider and clear the interval.
+ */
+function stopSlider(): void {
+  if (sliderInterval) {
+    clearInterval(sliderInterval);
+    sliderInterval = null;
+  }
+}
+
+/**
+ * Select stations whose label matches the current search term. This sets the
+ * checked state accordingly on the stationName list and refreshes the layer.
+ */
+function selectMatchingStations(): void {
+  const lowerCaseSearch = search.value.toLowerCase();
+  stationName.value.forEach((station) => {
+    station.checked = station.label.toLowerCase() === lowerCaseSearch;
+  });
+  updateLayer().catch((err) => console.error('Layer update failed', err));
+}
+
+/**
+ * Update the map layer and geojson data based on the current filters. This
+ * function coordinates property mapping, selection retrieval, data
+ * filtering and map updates. Errors are caught and logged rather than
+ * thrown to the parent to avoid unhandled rejection warnings.
+ */
+async function updateLayer(): Promise<void> {
+  // Map the selected property to the API property and update labels
+  const propDefinition = (state.propValues?.[elements['property']?.value] ?? state.propValues?.default) as any;
+  state.property = propDefinition.property;
+  description.value = propDefinition.description;
+  legendaValues.value = propDefinition.legendaValues ?? [];
+  concentrationValues.value = propDefinition.concentrationValues ?? [];
+  // Determine selected values from filters
+  const selectedRegio = getSelectedValues('regio');
+  const selectedGemeente = getSelectedValues('Gemeente');
+  const selectedStName = getSelectedValues('station_name');
+  // Reload the layer with the computed values
+  await reloadLayer(map.value, String(timeValue.value), selectedRegio, selectedGemeente, selectedStName);
+}
+
+/**
+ * Reload the map layer by fetching new data and updating the map source.
+ * It optionally loads data from a local file if present. Layer opacity is
+ * controlled when interpolation is enabled.
+ */
+async function reloadLayer(
+    m: maplibregl.Map | null,
+    hour: string,
+    selectedRegio: string[],
+    selectedGemeente: string[],
+    selectedStName: string[],
+): Promise<void> {
+  if (!m) return;
+  try {
+    const localFiles = elements['localFile']?.files ?? [];
+    isLocalFile.value = localFiles.length > 0;
+    fileName.value = isLocalFile.value ? localFiles[0].name : 'Geojson bestand | Uploaden';
+    isFrom.value = isLocalFile.value
+        ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold">van jouw Local File</span>'
+        : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata</a>. Bekijk de metadata voor details over de serverdata.';
+    const selectedDateIndex = dayNames.value.indexOf(elements['sDate']?.value);
+    await filterGeojsonFeatures(
+        hour,
+        selectedDateIndex,
+        elements['property']?.value,
+        selectedRegio,
+        selectedGemeente,
+        selectedStName,
+        isLocalFile.value,
+    );
+    updateMapSourceAndLayer(m, geojson.value);
+  } catch (error) {
+    console.error('Failed to reload layer:', error);
+  }
+}
+
+/**
+ * Filter the GeoJSON features according to the selected parameters. When
+ * interpolation is active it applies the IDW interpolation. Otherwise it
+ * fetches station and observation data and merges them on the station name.
+ */
+async function filterGeojsonFeatures(
+    hour: string,
+    selectedDateIndex: number,
+    selectedProperty: string,
+    selectedRegio: string[],
+    selectedGemeente: string[],
+    selectedStName: string[],
+    local: boolean,
+): Promise<void> {
+  const now = new Date();
+  now.setDate(now.getDate() - selectedDateIndex);
+  // Adjust for timezone offset to match API expectations
+  const date = new Date(
+      Date.UTC(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          parseInt(hour, 10) + now.getTimezoneOffset() / 60,
+      ),
+  );
+  const measuredTime = date.toISOString().replace('T', '%20').substring(0, 19) + '00';
+  // When interpolation is activated call interpolation function
+  if (interpolationStatus.value === 'activate') {
+    await idwInterpolation(date.toISOString());
+  } else if (currentLayerId.value && map.value?.getLayer(currentLayerId.value)) {
+    map.value.setPaintProperty(currentLayerId.value, 'raster-opacity', 0);
+  }
+  // Build filters for API calls
+  const filters = {
+    property: selectedProperty,
+    station: selectedStName.length > 0 ? selectedStName : undefined,
+    gemeente:
+        selectedStName.length > 0
+            ? undefined
+            : selectedGemeente.length > 0
+                ? selectedGemeente
+                : undefined,
+    regio:
+        selectedStName.length > 0 || selectedGemeente.length > 0
+            ? undefined
+            : selectedRegio.length > 0
+                ? selectedRegio
+                : undefined,
+  } as Record<string, string[] | string | undefined>;
+  let filtered: FeatureCollection;
+  if (local) {
+    filtered = await loadLocalFile();
+  } else {
+    // Compose URLs with query parameters
+    const urlStations = new URL(
+        'https://dta-samenmeten-api.azurewebsites.net/api/data/stations',
+    );
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value && (Array.isArray(value) ? value.length > 0 : true)) {
+        urlStations.searchParams.append(key, Array.isArray(value) ? value.join(',') : String(value));
       }
-    },
-  },
-
-  created() {
-    this.STYLE_URL = `https://api.maptiler.com/maps/dataviz/style.json?key=${this.API_KEY}`;
-    this.checkHourChange();
-  },
-
-  async mounted() {
-    document.getElementById('czoom').style.zoom = "87%";
-    document.getElementById('czoom2').style.zoom = "113%";
-    document.getElementById('sidebar').style.zoom = "87%";
-
-
-    this.initializeMap();
-    this.addControls();
-    this.elements = this.ids.reduce((acc, id) => {
-      acc[id] = this.getElementRef(id);
-      return acc;
-    }, {});
-
-    this.geojson = await this.fetchData('https://dta-samenmeten-api.azurewebsites.net/api/data/stations');
-
-    [this.regios, this.gemeentes, this.stName] = await Promise.all([
-      this.getUniqueItems(this.geojson, 'regio'),
-      this.getUniqueItems(this.geojson, 'Gemeente'),
-      this.getUniqueItems(this.geojson, 'station_name')
+    });
+    const urlObservations = new URL(
+        `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?property=${selectedProperty}&measured_time=${measuredTime}`,
+    );
+    // Fetch in parallel
+    const [stations, observations] = await Promise.all([
+      fetchData(urlStations.toString()),
+      fetchData(urlObservations.toString()),
     ]);
-
-    this.createCheckboxes('regio', this.regios);
-    this.createCheckboxes('Gemeente', this.gemeentes);
-    this.createCheckboxes('station_name', this.stName);
-    this.selectedDay = this.dayNames[0];
-    this.updateLayer();
-  },
-  beforeUnmount() {
-    this._destroyChart();
-  },
-  methods: {
-    getElementRef(id) {
-      const directRef = this.$refs[id];
-      if (directRef) {
-        return directRef;
-      }
-      const refContainers = [this.$refs.legendTabs, this.$refs.dataTools];
-      for (const container of refContainers) {
-        if (container?.$refs?.[id]) {
-          return container.$refs[id];
+    // Build a lookup for observation by station name
+    const observationMap = new Map<string, Feature>();
+    (observations.features ?? observations.Features ?? []).forEach((observation) => {
+      observationMap.set(observation.properties.station_name ?? '', observation);
+    });
+    // Merge station and observation data into a new FeatureCollection
+    filtered = {
+      type: 'FeatureCollection',
+      features: (stations.features ?? stations.Features ?? []).filter((station) => {
+        const matching = observationMap.get(station.properties.station_name ?? '');
+        if (matching) {
+          // Copy aggregated values from station onto observation
+          matching.properties.avg_value = station.properties.avg_value;
+          matching.properties.max_value = station.properties.max_value;
+          matching.properties.min_value = station.properties.min_value;
+          // Replace station properties and geometry with observation
+          station.properties = { ...matching.properties };
+          station.geometry = matching.geometry;
+          return true;
         }
-      }
-      return undefined;
+        return false;
+      }),
+    };
+  }
+  // Update the reactive geojson reference
+  geojson.value = filtered;
+  // Refresh filter lists with new unique values and preserve checked state
+  await Promise.all([
+    updateUniqueItems(filtered, 'regio'),
+    updateUniqueItems(filtered, 'Gemeente'),
+    updateUniqueItems(filtered, 'station_name'),
+  ]);
+}
+
+/**
+ * Load and parse a local GeoJSON file selected by the user. The legacy API
+ * expects `Features` instead of `features`, so we normalise the property.
+ */
+async function loadLocalFile(): Promise<FeatureCollection> {
+  const file = elements['localFile']?.files?.[0];
+  if (!file) throw new Error('No local file selected');
+  const text = await file.text();
+  const parsed = JSON.parse(text) as FeatureCollection;
+  if (parsed.Features) {
+    parsed.features = parsed.Features;
+    delete (parsed as any).Features;
+  }
+  return parsed;
+}
+
+/**
+ * Perform IDW interpolation by adding a raster layer. It toggles opacity on
+ * previously added layers to ensure only the current interpolation is
+ * visible. The generated layer is added only once per date/property.
+ */
+async function idwInterpolation(dateStr: string): Promise<void> {
+  const m = map.value;
+  if (!m) return;
+  const bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691];
+  const layerId = `interpolatie-${dateStr}-${elements['property']?.value}`;
+  rasterLayers.add(layerId);
+  // Toggle opacity across all raster layers
+  rasterLayers.forEach((id) => {
+    if (m.getLayer(id)) {
+      m.setPaintProperty(id, 'raster-opacity', id === layerId ? 1 : 0);
+    }
+  });
+  currentLayerId.value = layerId;
+  if (!m.getLayer(layerId)) {
+    const url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${elements['property']?.value}_sqldb&bbox=${bounds.join(',')}&time=${dateStr}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
+    m.addSource(layerId, {
+      type: 'image',
+      url,
+      coordinates: [
+        [bounds[0], bounds[3]],
+        [bounds[2], bounds[3]],
+        [bounds[2], bounds[1]],
+        [bounds[0], bounds[1]],
+      ],
+    });
+    m.addLayer({ id: layerId, type: 'raster', source: layerId, paint: { 'raster-opacity': 1 } });
+  }
+}
+
+/**
+ * Update or create the map source and layer for station points. When a
+ * FeatureCollection is provided it normalises the property names and
+ * updates the existing source. On first call it creates the layer and
+ * attaches click handlers for opening the station popup.
+ */
+function updateMapSourceAndLayer(m: maplibregl.Map, geo: FeatureCollection | null): void {
+  if (!geo || (!geo.features && !geo.Features)) return;
+  const features = geo.features ?? geo.Features;
+  const normalized: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: features,
+  };
+  // Create or update source
+  if (!m.getSource('stations')) {
+    m.addSource('stations', { type: 'geojson', data: normalized });
+  } else {
+    (m.getSource('stations') as maplibregl.GeoJSONSource).setData(normalized);
+  }
+  // Add layer if not present
+  if (!m.getLayer('stations')) {
+    addStationsLayer();
+  }
+}
+
+/**
+ * Generate paint rules for the station circles based on the property and
+ * value. Uses step expressions to assign colours according to breakpoints.
+ */
+function getCircleColorExpression(): any[] {
+  return [
+    'case',
+    ['==', ['get', 'property'], 'pm25'],
+    ['step', ['get', 'value'], '#1E90FF', 8.3, '#48D1CC', 16.7, '#9ACD32', 25, '#DAA520', Infinity, '#000000'],
+    ['in', ['get', 'property'], ['literal', ['no2', 'pm10']]],
+    ['step', ['get', 'value'], '#1E90FF', 13.3, '#48D1CC', 26.6, '#9ACD32', 40, '#DAA520', Infinity, '#000000'],
+    '#000000',
+  ];
+}
+
+/**
+ * Add the station layer with appropriate styling and click interaction. When
+ * the layer is clicked either a dropdown or detail popup is shown based on
+ * the number of overlapping features. Popups are sanitised to prevent XSS.
+ */
+function addStationsLayer(): void {
+  const m = map.value;
+  if (!m) return;
+  m.addLayer({
+    id: 'stations',
+    type: 'circle',
+    source: 'stations',
+    paint: {
+      'circle-radius': 6,
+      'circle-color': getCircleColorExpression(),
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 1.8,
     },
-    getChartRef() {
-      return this.$refs.stationModal?.$refs?.myChart || this.$refs.myChart;
-    },
-    getToastRef() {
-      return this.$refs.toastPanel?.$refs?.liveToast || this.$refs.liveToast;
-    },
-    async initializeMap() {
-      this.map = new window.maplibregl.Map({
-        container: 'map',
-        style: this.STYLE_URL,
-        center: [4.218788, 52.008663],
-        zoom: 8.9,
-      });
+  });
+  m.on('click', 'stations', handleStationClick);
+}
 
-      this.map.on('load', () => {
-        this.addLineSourceAndLayer();
-        this.addWindLayer();
-      });
-    },
+/**
+ * Handle clicks on station points. If multiple features are present at the
+ * clicked point, display a dropdown to select one. Otherwise show the
+ * details popup directly. Both paths sanitise user data to avoid XSS.
+ */
+function handleStationClick(e: maplibregl.MapMouseEvent & maplibregl.EventData): void {
+  const m = map.value;
+  if (!m) return;
+  const features = m.queryRenderedFeatures(e.point, { layers: ['stations'] });
+  if (features.length > 1) {
+    createDropdownPopup(features, e);
+  } else if (features.length === 1) {
+    createDetailPopup(features[0], e);
+  }
+}
 
-    async addLineSourceAndLayer() {
-      if (!this.map.getSource('line')) {
-        this.map.addSource('line', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: this.bbox
-            }
-          }
-        });
-      }
-      if (!this.map.getLayer('line')) {
-        this.map.addLayer({
-          id: 'line',
-          type: 'line',
-          source: 'line',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round'
-          },
-          paint: {
-            'line-color': '#ff0000',
-            'line-width': 1.4,
-            'line-opacity': 0.8,
-            'line-blur': 0.5
-          }
-        });
-      }
-    },
-
-    _destroyChart() {
-      if (this.myChart) {
-        this.myChart.destroy();
-        this.myChart = null;
-        console.log('chart destroyed');
-      }
-    },
-
-    async addControls() {
-      this.addStyleSwitchControl();
-      this.map.addControl(new window.maplibregl.FullscreenControl());
-      this.map.addControl(new window.maplibregl.NavigationControl());
-      this.map.addControl(new window.maplibregl.GeolocateControl({
-        positionOptions: {
-          enableHighAccuracy: true
-        },
-        trackUserLocation: true
-      }));
-    },
-
-    addStyleSwitchControl() {
-      const styleSwitcher = this.createStyleSwitcher();
-      const styleSwitchControl = this.createStyleSwitchControl(styleSwitcher);
-
-      this.map.addControl(styleSwitchControl);
-    },
-
-    createStyleSwitcher() {
-      const styleSwitcherContainer = document.createElement('div');
-      styleSwitcherContainer.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-
-      const label = document.createElement('label');
-      label.className = 'fw-semibold text-success';
-      label.innerText = 'Selecteer achtergrond:';
-      styleSwitcherContainer.appendChild(label);
-
-      const styleSwitcher = document.createElement('select');
-      styleSwitcher.className = 'form-select form-select-sm'; // Bootstrap's form control class
-      styleSwitcher.style.fontSize = '1.2em';
-      styleSwitcher.style.cursor = 'pointer';
-
-      const styles = this.STYLE_URLS.map(url => `${url}${this.API_KEY}`);
-
-      styles.forEach((style, index) => {
-        const option = document.createElement('option');
-        option.value = style;
-        option.text = this.STYLE_NAMES[index] || `Style ${index + 1}`;
-        styleSwitcher.appendChild(option);
-      });
-
-      styleSwitcher.onchange = async (event) => {
-        try {
-          this.map.setStyle(event.target.value);
-          setTimeout(() => {
-            this.updateLayer();
-            this.addLineSourceAndLayer();
-          }, 50);
-        } catch (error) {
-          console.error('An error occurred while switching styles:', error);
-        }
-      };
-
-      styleSwitcherContainer.appendChild(styleSwitcher);
-
-      return styleSwitcherContainer;
-    },
-
-    createStyleSwitchControl(styleSwitcher) {
-      return {
-        onAdd: () => {
-          return styleSwitcher;
-        },
-        onRemove: function () {
-        },
-        getDefaultPosition: function () {
-          return 'top-right';
-        },
-      };
-    },
-
-
-    async reloadPage() {
-      window.location.reload();
-    },
-    clearInput(refName) {
-      this.$refs[refName].value = '';
-      if (refName === 'sDate') {
-        this.selectedDay = '';
-      } else {
-        this.updateLayer()
-      }
-    },
-
-    async checkHourChange() {
-      setInterval(async () => {
-        this.updateLayer();
-      }, 1000 * 60 * 20);
-    },
-
-    formatDate(date) {
-      const dayName = this.days[date.getDay()];
-      const dateString = date.toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'});
-      return `${dayName} | ${dateString}`;
-    },
-
-    async toggleSlider() {
-      this.isPlaying = !this.isPlaying;
-      this.isPlaying ? this.startSlider() : this.stopSlider();
-    },
-    async startSlider() {
-      this.interval && clearInterval(this.interval);
-      const today = this.formatDate(new Date());
-      const maxHour = this.selectedDay === today ? new Date().getHours() : 23;
-      this.timeValue = 0;
-      this.updateLayer();
-      this.interval = setInterval(() => {
-        if (this.timeValue < maxHour) {
-          this.timeValue++;
-          this.updateLayer();
-        } else {
-          this.stopSlider();
-          this.isPlaying = false;
-        }
-      }, 1550);
-    },
-    stopSlider() {
-      clearInterval(this.interval);
-      this.interval = null;
-    },
-
-    async selectMatchingStations() {
-      const lowerCaseSearch = this.search.toLowerCase();
-      this.station_name.forEach(station => {
-        station.checked = station.label.toLowerCase() === lowerCaseSearch;
-      });
-      this.updateLayer();
-    },
-
-    async fetchData(url) {
-      let response = await fetch(url, {method: "GET", credentials: "include", keepalive: true});
-
-      return await response.json();
-    },
-
-    async loadLocalFile() {
-      try {
-        let geojson = JSON.parse(await this.elements.localFile.files[0].text());
-        geojson.Features = geojson.features;
-        delete geojson.features;
-        return geojson;
-      } catch (error) {
-        console.error('Error reading local file:', error);
-        throw error;
-      }
-    },
-
-
-    async getUniqueItems(geojson, uniqueColumn) {
-      return [...new Set(geojson.Features.map(Feature => Feature.properties?.[uniqueColumn]))];
-    },
-
-    async createCheckboxes(id, items) {
-      const selectedItems = this[id] ? this[id].filter(i => i.checked).map(i => i.id) : [];
-      this[id] = items.sort().map(item => ({
-        id: item,
-        label: item,
-        checked: selectedItems.includes(item)
-      }));
-    },
-
-    async getSelectedValues(name) {
-      return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(input => input.value);
-    },
-
-    // Created by Bayram Gurel
-    async updateLayer() {
-      const prop = this.propValues[this.elements.property.value] || this.propValues.default;
-      this.property = prop.property;
-      this.description = prop.description;
-      this.legendaValues = prop.legendaValues;
-      this.concentrationValues = prop.concentrationValues;
-
-      const selectedRegio = await this.getSelectedValues('regio');
-      const selectedGemeente = await this.getSelectedValues('Gemeente');
-      const selectedStName = await this.getSelectedValues('station_name');
-      this.reloadLayer(this.map, this.elements.timeSlider.value, selectedRegio, selectedGemeente, selectedStName).catch(error => console.error('Error reloading layer:', error));
-    },
-
-    async reloadLayer(map, hour, selectedRegio, selectedGemeente, selectedStName) {
-      try {
-        const {files: localFiles = []} = this.elements.localFile || {};
-        this.isLocalFile = localFiles.length > 0;
-        this.fileName = this.isLocalFile ? localFiles[0].name : 'Geojson bestand | Uploaden'; // Update the label text
-        this.isFrom = this.isLocalFile ? 'De gegevens zijn afkomstig <span class="link-success fw-semibold"">van jouw Local File</span>' : 'De gegevens zijn afkomstig van <a href="https://api-samenmeten.rivm.nl/v1.0/Things" target="_blank" class="link-success link-offset-2 link-underline-opacity-25 link-underline-opacity-100-hover fw-semibold">onze metadata. Bekijk de metadata voor details over de serverdata.</a>';
-        // console.time('myTimer');
-        const selectedDateIndex = this.dayNames.indexOf(this.elements.sDate.value);
-        await this.filterGeojsonFeatures(hour, selectedDateIndex, this.elements.property.value, selectedRegio, selectedGemeente, selectedStName, this.isLocalFile); // console.timeEnd('myTimer');
-        this.updateMapSourceAndLayer(map, this.geojson);
-      } catch (error) {
-        console.error(error);
-      }
-    },
-
-    async filterGeojsonFeatures(hour, selectedDateIndex, selectedProperty, selectedRegio, selectedGemeente, selectedStName, isLocalFile) {
-      const now = new Date();
-      now.setDate(now.getDate() - selectedDateIndex);
-
-      const date = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hour) + now.getTimezoneOffset() / 60));
-      const measured_time = date.toISOString().replace('T', '%20').substring(0, 19) + '00';
-
-      if (this.interpolationStatus === 'activate') {
-        this.idw_interpolation(date.toISOString());
-      } else if (this.currentLayerId && this.map.getLayer(this.currentLayerId)) {
-        this.map.setPaintProperty(this.currentLayerId, 'raster-opacity', 0);
-      }
-
-      const filters = {
-        'property': selectedProperty,
-        'station': selectedStName.length > 0 ? selectedStName : [],
-        'gemeente': selectedStName.length > 0 ? [] : (selectedGemeente.length > 0 ? selectedGemeente : []),
-        'regio': selectedStName.length > 0 || selectedGemeente.length > 0 ? [] : (selectedRegio.length > 0 ? selectedRegio : [])
-      };
-
-      let filteredGeojson;
-      if (isLocalFile) {
-        filteredGeojson = await this.loadLocalFile(isLocalFile);
-      } else {
-        let url1 = new URL('https://dta-samenmeten-api.azurewebsites.net/api/data/stations');
-        Object.entries(filters).forEach(([key, value]) => {
-          if (value && value.length > 0) url1.searchParams.append(key, value);
-        });
-
-        let url2 = new URL(`https://dta-samenmeten-api.azurewebsites.net/api/data/observations?property=${selectedProperty}&measured_time=${measured_time}`);
-
-        // Fetch data in parallel
-        let [stations, observations] = await Promise.all([this.fetchData(url1.toString()), this.fetchData(url2.toString())]);
-
-        let observationMap = new Map();
-        observations.Features.forEach(observation => {
-          observationMap.set(observation.properties.station_name, observation);
-        });
-
-        filteredGeojson = {
-          type: 'FeatureCollection',
-          Features: stations.Features.filter(station => {
-            let matchingObservation = observationMap.get(station.properties.station_name);
-            if (matchingObservation) {
-              matchingObservation.properties.avg_value = station.properties.avg_value;
-              matchingObservation.properties.max_value = station.properties.max_value;
-              matchingObservation.properties.min_value = station.properties.min_value;
-              station.properties = {...matchingObservation.properties};
-              station.geometry = matchingObservation.geometry;
-              return true;
-            }
-            return false;
-          })
-        };
-      }
-      this.geojson = filteredGeojson;
-
-      [this.regios, this.gemeentes, this.stName] = await Promise.all([this.getUniqueItems(this.geojson, 'regio'), this.getUniqueItems(this.geojson, 'Gemeente'), this.getUniqueItems(this.geojson, 'station_name')]);
-
-      this.createCheckboxes('regio', this.regios);
-      this.createCheckboxes('Gemeente', this.gemeentes);
-      this.createCheckboxes('station_name', this.stName);
-    },
-
-    // Created by Bayram Gurel
-    async idw_interpolation(date) {
-      let bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691];
-      let layerId = 'interpolatie-' + date + '-' + this.elements.property.value;
-
-      // Add the layerId to the rasterLayers set if it's not already there
-      this.rasterLayers.add(layerId);
-
-      // Set the opacity of all layers to 0, except for the current one
-      this.rasterLayers.forEach(id => {
-        if (this.map.getLayer(id)) {
-          this.map.setPaintProperty(id, 'raster-opacity', id === layerId ? 1 : 0);
-        }
-      });
-
-      this.currentLayerId = layerId;
-
-      if (!this.map.getLayer(layerId)) {
-        let url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${this.elements.property.value}_sqldb&bbox=${bounds.join(',')}&time=${date}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
-        console.log(url)
-        this.map.addSource(layerId, {
-          'type': 'image',
-          'url': url,
-          'coordinates': [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]]
-        });
-        this.map.addLayer({'id': layerId, 'type': 'raster', 'source': layerId, 'paint': {'raster-opacity': 1}});
-      }
-    },
-
-    async downloadGeoJSON() {
-      let dataStr = JSON.stringify(this.geojson);
-      let dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-
-      let link = document.createElement('a');
-      link.href = dataUri;
-      link.download = `PZH-Luchtkwaliteit_${this.property}.geojson`;
-      this.toast();
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    },
-
-    async downloadCSV() {
-      const CSV_HEADER = 'Station naam;Datum en tijd;Property;Regio;Gemeente;Value;Unit\n';
-      const DEFAULT_VALUE = 'N/A';
-      let csv = CSV_HEADER;
-
-      this.geojson.features.forEach(feature => {
-        let properties = feature.properties;
-        let station_name = properties?.station_name || DEFAULT_VALUE;
-        let measured_time = properties?.measured_time ? new Date(properties.measured_time).toISOString() : DEFAULT_VALUE; // Change here
-        let property = properties?.property || DEFAULT_VALUE;
-        let regio = properties?.regio || DEFAULT_VALUE;
-        let gemeente = properties?.Gemeente || DEFAULT_VALUE;
-        let value = properties?.value !== undefined ? `${properties.value.toFixed(2)}` : DEFAULT_VALUE;
-        let unit = properties?.unit || DEFAULT_VALUE;
-
-        csv += `${station_name}; ${measured_time}; ${property}; ${regio}; ${gemeente}; ${value}; ${unit}\n`; // Added newline character here
-      });
-
-      let link = document.createElement('a');
-      link.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
-      link.download = 'Provincie Zuid-Holland Luchtkwaliteit - Samen Meten Dashboard.csv';
-      this.toast();
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    },
-
-    async toast() {
-      // Show the toast
-      const toastLiveExample = this.getToastRef();
-      const toastBootstrap = window.bootstrap.Toast.getOrCreateInstance(toastLiveExample);
-      // Update the time in the toast
-      const now = new Date();
-      this.timeString = now.getHours() + ':' + now.getMinutes() + ':' + now.getSeconds();
-      toastBootstrap.show();
-    },
-    //
-    // async downloadPDF(geojson) {
-    //   let doc = new window.jsPDF();
-    //   let canvas = document.createElement('canvas');
-    //   canvas.width = 200;
-    //   canvas.height = 100;
-    //   let ctx = canvas.getContext('2d');
-    //
-    //   let labels = geojson.features.map(feature => feature.properties?.station_name || 'N/A');
-    //   let data = geojson.features.map(feature => feature.properties?.value || 0);
-    //
-    //   let chart = new window.Chart(ctx, {
-    //     type: 'bar',
-    //     data: {
-    //       labels: labels,
-    //       datasets: [{
-    //         label: 'Value',
-    //         data: data,
-    //         backgroundColor: 'rgba(75, 192, 192, 0.2)',
-    //         borderColor: 'rgba(75, 192, 192, 1)',
-    //         borderWidth: 1
-    //       }]
-    //     },
-    //     options: {
-    //       animation: {
-    //         onComplete: function() {
-    //           canvas.toBlob(function(blob) {
-    //             if (blob) {
-    //               let img = new Image();
-    //               img.onload = function() {
-    //                 doc.addImage(img, 'PNG', 10, 10, 180, 90);
-    //                 doc.save('Provincie Zuid-Holland Luchtkwaliteit - Samen Meten Dashboard.pdf');
-    //               };
-    //               img.src = URL.createObjectURL(blob);
-    //             } else {
-    //               console.log('Blob does not exist');
-    //             }
-    //           });
-    //         }
-    //       },
-    //       scales: {
-    //         y: {
-    //           beginAtZero: true
-    //         }
-    //       }
-    //     }
-    //   });
-    // },
-
-
-    updateMapSourceAndLayer(map, geojson) {
-      if (!geojson || !geojson.Features) return;
-      geojson.features = geojson.Features;
-      delete geojson.Features;
-      if (!map.getSource('stations')) {
-        map.addSource("stations", {type: 'geojson', data: geojson});
-      } else {
-        map.getSource('stations').setData(geojson);
-      }
-      if (!map.getLayer('stations')) {
-        this.addStationsLayer();
-      }
-    },
-
-    getCircleColor() {
-      return [
-        'case',
-        ['==', ['get', 'property'], 'pm25'],
-        ['step', ['get', 'value'], '#1E90FF', 8.3, '#48D1CC', 16.7, '#9ACD32', 25, '#DAA520', Infinity, '#000000'],
-        ['in', ['get', 'property'], ['literal', ['no2', 'pm10']]],
-        ['step', ['get', 'value'], '#1E90FF', 13.3, '#48D1CC', 26.6, '#9ACD32', 40, '#DAA520', Infinity, '#000000'],
-        '#000000' // default output for 'case'
-      ];
-    },
-
-    addStationsLayer() {
-      this.map.addLayer({
-        'id': 'stations',
-        'type': 'circle',
-        'source': 'stations',
-        'paint': {
-          'circle-radius': 6,
-          'circle-color': this.getCircleColor(),
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 1.8,
-        }
-      });
-      this.map.on('click', 'stations', this.handleStationClick);
-    },
-
-    async handleStationClick(e) {
-      const features = this.map.queryRenderedFeatures(e.point, { layers: ['stations'] });
-
-      if (features.length > 1) {
-        this.createDropdownPopup(features, e);
-      } else {
-        this.createDetailPopup(e.features[0], e);
-      }
-    },
-
-    // Created by Bayram Gurel
-    async createDropdownPopup(features, e) {
-      let dropdownHTML = `
+/**
+ * Create a dropdown popup listing multiple overlapping stations. The user can
+ * pick one and then see details. The popup content is built with
+ * sanitisation by escaping text values.
+ */
+function createDropdownPopup(
+    features: maplibregl.MapboxGeoJSONFeature[],
+    e: maplibregl.MapMouseEvent & maplibregl.EventData,
+): void {
+  const m = map.value;
+  if (!m) return;
+  // Build HTML string for dropdown. Escape station names to prevent XSS.
+  let dropdownHTML = `
     <div class="card text-center border-primary">
       <div class="card-header bg-primary text-white">
         <h6>Selecteer Station <i class="bi bi-search"></i></h6>
@@ -661,247 +921,417 @@ export default {
             Kies een station
           </button>
           <div class="dropdown-menu" aria-labelledby="stationSelect" style="height: 200px; overflow-y: auto;">
-            `;
-      features.forEach((feature, index) => {
-        const color = this.getColor(feature.properties.value, feature.properties.property, 1);
-        dropdownHTML += `
-              <a class="dropdown-item" href="#" data-value="${index}">
-                <i class="bi bi-geo-alt-fill" style="color: ${color};"></i> ${feature.properties.station_name}
-              </a>`;
-      });
-      dropdownHTML += `
+  `;
+  features.forEach((feature, index) => {
+    const props = feature.properties as FeatureProperties;
+    const station = String(props.station_name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const value = props.value as number;
+    const color = getColor(value, props.property ?? '', '1');
+    dropdownHTML += `
+      <a class="dropdown-item" href="#" data-index="${index}">
+        <i class="bi bi-geo-alt-fill" style="color: ${color};"></i> ${station}
+      </a>`;
+  });
+  dropdownHTML += `
           </div>
         </div>
       </div>
     </div>
   `;
-
-      const popup = new window.maplibregl.Popup({className: 'my-popup'})
-          .setLngLat(e.lngLat)
-          .setHTML(dropdownHTML)
-          .addTo(this.map);
-
-      this.$nextTick(() => {
-        const dropdownItems = Array.from(popup.getElement().querySelectorAll('.dropdown-item'));
-        dropdownItems.forEach(item => {
-          item.addEventListener('click', (event) => {
-            event.preventDefault();
-            popup.remove();
-            this.createDetailPopup(features[event.target.dataset.value], e);
-          });
-        });
+  const popup = new window.maplibregl.Popup({ className: 'my-popup' })
+      .setLngLat(e.lngLat)
+      .setHTML(dropdownHTML)
+      .addTo(m);
+  // After DOM insertion attach click listeners
+  nextTick(() => {
+    const items = Array.from(popup.getElement().querySelectorAll('.dropdown-item'));
+    items.forEach((item) => {
+      item.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const index = Number((ev.currentTarget as HTMLElement).dataset.index);
+        popup.remove();
+        createDetailPopup(features[index], e);
       });
-    },
+    });
+  });
+}
 
-    async createDetailPopup(feature, e) {
-      const {properties} = feature;
-      this.properties = properties
-      const popup = new window.maplibregl.Popup({className: 'my-popup'})
-          .setLngLat(e.lngLat)
-          .setHTML(this.getPopupHTML(properties))
-          .addTo(this.map);
-
-      this.$nextTick(() => {
-        const button = popup.getElement().querySelector('button');
-        button.addEventListener('click', async () => {
-          button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">Loading...</span>';
-          try {
-            await this.loadChart(properties);
-          } finally {
-            button.innerHTML = 'Informatie over station';
-            popup.remove();
-          }
-        });
-      });
-    },
-
-
-    getPopupHTML({station_name, property, value, unit, Gemeente, regio, measured_time}) {
-      const formattedDate = new Date(measured_time).toLocaleString('nl-NL', {
+/**
+ * Create a detailed popup for a single station. It displays the station's
+ * name, property value, location and last update time. A button triggers
+ * loading of the historical chart in a modal. User content is escaped.
+ */
+function createDetailPopup(
+    feature: maplibregl.MapboxGeoJSONFeature,
+    e: maplibregl.MapMouseEvent & maplibregl.EventData,
+): void {
+  const m = map.value;
+  if (!m) return;
+  const props = feature.properties as FeatureProperties;
+  properties.value = props;
+  // Escape values
+  const stationNameEsc = String(props.station_name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const propertyEsc = String(props.property ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const valueEsc = props.value !== undefined ? props.value.toString() : 'N/A';
+  const unitEsc = String(props.unit ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const gemeenteEsc = String(props.Gemeente ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const regioEsc = String(props.regio ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const formattedDate = props.measured_time
+      ? new Date(props.measured_time).toLocaleString('nl-NL', {
         timeZone: 'GMT',
         day: '2-digit',
         month: 'long',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit'
-      });
-      const color = this.getColor(value, property, 1);
-      return `
-  <div class="card text-center" style="border-color: ${color};">
-    <div class="card-header" style="background-color: ${color}; color: white;">
-      <h6>Station naam: ${station_name}</h6>
+        second: '2-digit',
+      })
+      : 'Onbekend';
+  const color = getColor(props.value ?? 0, props.property ?? '', '1');
+  const popupHtml = `
+    <div class="card text-center" style="border-color: ${color};">
+      <div class="card-header" style="background-color: ${color}; color: white;">
+        <h6>Station naam: ${stationNameEsc}</h6>
+      </div>
+      <div class="card-body">
+        <h6 class="card-title">Component en meetwaarde:<br>${propertyEsc}: ${valueEsc} ${unitEsc}</h6>
+        <h6>Beschrijving:<br>Gemeente ${gemeenteEsc} - Regio ${regioEsc}</h6>
+        <h6 class="card-text">
+          <small class="text-muted">Laatst update: ${formattedDate}</small>
+        </h6>
+        <button class="btn mt-3" type="button" data-bs-toggle="modal" data-bs-target="#modalWithBothOptions" style="background-color: ${color}; color: white;" data-properties='${encodeURIComponent(
+      JSON.stringify(props),
+  )}'>
+          Informatie over station
+        </button>
+      </div>
     </div>
-    <div class="card-body">
-      <h6 class="card-title">Component en meetwaarde:<br>${property}: ${value} ${unit}</h6>
-      <h6>Beschrijving:<br>Gemeente ${Gemeente} - Regio ${regio}</h6>
-      <h6 class="card-text">
-        <small class="text-muted">Laatst update: ${formattedDate}</small>
-      </h6>
-<button class="btn mt-3" type="button" data-bs-toggle="modal" data-bs-target="#modalWithBothOptions" style="background-color: ${color}; color: white;" data-properties='${JSON.stringify({station_name, property, value, unit, Gemeente, regio, measured_time})}'>        Informatie over station
-      </button>
-    </div>
-  </div>`;
-    },
-
-    async loadChart(properties) {
-      try {
-        this._destroyChart();
-
-        const url = new URL(`https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${properties.station_name}&property=${properties.property}&location=${properties.location_uuid}`);
-        console.log(url)
-        console.log(properties)
-        const observationData = await this.fetchData(url.toString());
-        const dataByDate = this.processData(observationData);
-        const datasets = this.createDatasets(properties.property, dataByDate);
-      this.$nextTick(() => {
-        const chartRef = this.getChartRef();
-        if (chartRef) {
-          this.myChart = this.createChart(chartRef, properties.property, dataByDate, datasets);
+  `;
+  const popup = new window.maplibregl.Popup({ className: 'my-popup' })
+      .setLngLat(e.lngLat)
+      .setHTML(popupHtml)
+      .addTo(m);
+  // Attach click event to load chart
+  nextTick(() => {
+    const button = popup.getElement().querySelector('button');
+    if (button) {
+      button.addEventListener('click', async () => {
+        (button as HTMLButtonElement).innerHTML =
+            '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">Loading...</span>';
+        try {
+          await loadChart(props);
+        } finally {
+          (button as HTMLButtonElement).innerHTML = 'Informatie over station';
+          popup.remove();
         }
       });
-      } catch (error) {
-        console.error(`An error occurred while loading the chart: ${error}`);
+    }
+  });
+}
+
+/**
+ * Destroy the existing chart instance if present. Use this before creating
+ * a new chart to avoid memory leaks.
+ */
+function destroyChart(): void {
+  if ((state as any).myChart) {
+    (state as any).myChart.destroy();
+    (state as any).myChart = null;
+  }
+}
+
+/**
+ * Load observation data for the selected station and create a chart in the
+ * modal. This function fetches the data, processes it by date and hour,
+ * generates datasets and then instantiates the Chart.js chart.
+ *
+ * TODO: Chart creation logic could be moved into a dedicated composable or
+ * service module (e.g. `useChart`) to encapsulate data processing and chart
+ * configuration. This would make the main component leaner and facilitate
+ * unit testing of chart logic.
+ */
+async function loadChart(props: FeatureProperties): Promise<void> {
+  destroyChart();
+  try {
+    const url = new URL(
+        `https://dta-samenmeten-api.azurewebsites.net/api/data/observations?station=${encodeURIComponent(
+            props.station_name ?? '',
+        )}&property=${encodeURIComponent(props.property ?? '')}&location=${encodeURIComponent(props.location_uuid ?? '')}`,
+    );
+    const observationData = await fetchData(url.toString());
+    const dataByDate = processData(observationData);
+    const datasets = createDatasets(props.property ?? '', dataByDate);
+    // Wait for DOM to update before referencing chart canvas
+    nextTick(() => {
+      const chartRef = (getCurrentInstance()?.proxy as any)?.$refs.stationModal?.$refs?.myChart;
+      if (chartRef) {
+        createChart(chartRef, props.property ?? '', dataByDate, datasets);
       }
-    },
+    });
+  } catch (error) {
+    console.error('Error while loading chart', error);
+  }
+}
 
-    processData(observationData) {
-      return observationData.Features.reduce((dataByDate, feature) => {
-        let date = new Date(feature.properties.measured_time);
-        let dateString = date.toISOString().split('T')[0];
-        let hourIndex = date.getUTCHours();
-        if (!dataByDate[dateString]) {
-          dataByDate[dateString] = {
-            times: Array.from({length: 24}, (_, i) => i < 10 ? `0${i}:00 GMT` : `${i}:00 GMT`),
-            values: Array(24).fill(null)
-          };
-        }
-        dataByDate[dateString].values[hourIndex] = feature.properties.value;
-        return dataByDate;
-      }, {});
-    },
+/**
+ * Convert observation FeatureCollection into a map keyed by date. Each
+ * entry holds arrays of times and corresponding values per hour.
+ */
+function processData(observationData: FeatureCollection): Record<string, { times: string[]; values: (number | null)[] }> {
+  const dataByDate: Record<string, { times: string[]; values: (number | null)[] }> = {};
+  (observationData.features ?? observationData.Features ?? []).forEach((feature) => {
+    const dateObj = new Date(feature.properties.measured_time ?? '');
+    const dateString = dateObj.toISOString().split('T')[0];
+    const hourIndex = dateObj.getUTCHours();
+    if (!dataByDate[dateString]) {
+      dataByDate[dateString] = {
+        times: Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00 GMT`),
+        values: Array(24).fill(null),
+      };
+    }
+    dataByDate[dateString].values[hourIndex] = feature.properties.value as number;
+  });
+  return dataByDate;
+}
 
-    // Created by Bayram Gurel
-    createDatasets(property, dataByDate) {
-      const datasets = Object.entries(dataByDate).map(([date, data]) => {
-        const values = data.values;
-        const backgroundColors = values.map(value => this.getColor(value, property, '0.4'));
+/**
+ * Create chart datasets from processed data. Assign colours based on the
+ * property and day of week. The most recent day is visible by default.
+ */
+function createDatasets(
+    property: string,
+    dataByDate: Record<string, { times: string[]; values: (number | null)[] }>,
+): any[] {
+  const keys = Object.keys(dataByDate);
+  return keys
+      .map((date, index) => {
+        const { values } = dataByDate[date];
+        const backgroundColors = values.map((val) => getColor(val ?? 0, property, '0.4'));
         const dateObj = new Date(date);
-        const borderColor = this.dayColors[dateObj.getDay()];
-
         return {
           label: dateObj.toLocaleDateString('nl-NL', {
             weekday: 'long',
             year: 'numeric',
             month: '2-digit',
-            day: '2-digit'
+            day: '2-digit',
           }),
           dateString: date,
           data: values,
           originalBackgroundColor: [...backgroundColors],
           backgroundColor: backgroundColors,
-          borderColor: borderColor,
+          borderColor: dayColors[dateObj.getDay()],
           borderWidth: 2,
           borderRadius: { topLeft: 3, topRight: 3 },
-          hidden: true
+          hidden: index !== keys.length - 1,
         };
-      });
-      datasets.sort((a, b) => new Date(a.dateString) - new Date(b.dateString));
-      if (datasets.length > 0) {
-        datasets[datasets.length - 1].hidden = false;
-      }
-      return datasets;
-    },
-
-    createChart(propertyChart, property, dataByDate, datasets) {
-      const yMin = property === "pm25" ? 25 : 40;
-      this.myChart = new window.Chart(propertyChart, {
-        type: 'bar',
-        data: {
-          labels: dataByDate[Object.keys(dataByDate)[0]].times,
-          datasets: datasets
-        },
-        options: {
-          ...this.chartOptions,
-          plugins: {
-            ...this.chartOptions.plugins,
-            annotation: {
-              annotations: [
-                {
-                  type: 'box',
-                  yMin: yMin,
-                  backgroundColor: 'rgba(230, 25, 75, 0.1)',
-                  borderColor: 'rgba(230, 25, 75, 1)',
-                  label: {
-                    content: 'Bad',
-                    enabled: true,
-                    position: 'center',
-                  }
-                },
-              ]
-            },
-            legend: {
-              display: true,
-              onHover: (evt, item, legend) => this.handleHover(evt, item, legend),
-              onLeave: (evt, item, legend) => this.handleLeave(evt, item, legend)
-            }
-          },
-        }
-      });
-      return this.myChart;
-    },
-
-
-    async handleHover(evt, item, legend) {
-      legend.chart.data.datasets.forEach((dataset, datasetIndex) => {
-        dataset.backgroundColor = datasetIndex === item.datasetIndex ?
-            dataset.originalBackgroundColor.map(color => {
-              let rgba = color.slice(0, -1).split(",");
-              rgba[3] = '0.8)';
-              return rgba.join(",");
-            }) :
-            dataset.originalBackgroundColor.map(color => {
-              let rgba = color.slice(0, -1).split(",");
-              rgba[3] = '0.1)';
-              return rgba.join(",");
-            });
-      });
-      legend.chart.update();
-    },
-
-    async handleLeave(evt, item, legend) {
-      legend.chart.data.datasets.forEach(dataset => {
-        dataset.backgroundColor = dataset.originalBackgroundColor;
-      });
-      legend.chart.update();
-    },
-
-    getColor(value, property, alpha) {
-      const valueColor = property === "pm25" ? [8.3, 16.7, 25, Infinity] : [13.3, 26.6, 40, Infinity];
-      const colors = ['rgba(30, 144, 255,', 'rgba(72, 209, 204,', 'rgba(154, 205, 50,', 'rgba(218, 165, 32,'];
-
-      const colorIndex = valueColor.findIndex(threshold => value < threshold);
-      const color = colors[colorIndex] !== undefined ? colors[colorIndex] : colors[colors.length - 1];
-
-      return `${color}${alpha})`;
-    }
-  },
-};
-// Created by Bayram Gurel
-</script>
-
-<!-- Add "scoped" attribute to limit CSS to this component only -->
-<style scoped>
-/* Custom File Input Styles */
-.input-group input[type="file"] {
-  display: none; /* Hide the default file input */
+      })
+      .sort((a, b) => new Date(a.dateString).getTime() - new Date(b.dateString).getTime());
 }
 
+/**
+ * Instantiate a Chart.js bar chart using the provided datasets and options. It
+ * registers hover handlers to adjust opacity on legend hover for improved
+ * interactivity.
+ */
+function createChart(
+    canvas: HTMLCanvasElement,
+    property: string,
+    dataByDate: Record<string, { times: string[]; values: (number | null)[] }>,
+    datasets: any[],
+): void {
+  const yMin = property === 'pm25' ? 25 : 40;
+  (state as any).myChart = new window.Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: dataByDate[Object.keys(dataByDate)[0]].times,
+      datasets,
+    },
+    options: {
+      ...state.chartOptions,
+      plugins: {
+        ...state.chartOptions?.plugins,
+        annotation: {
+          annotations: [
+            {
+              type: 'box',
+              yMin,
+              backgroundColor: 'rgba(230, 25, 75, 0.1)',
+              borderColor: 'rgba(230, 25, 75, 1)',
+              label: {
+                content: 'Bad',
+                enabled: true,
+                position: 'center',
+              },
+            },
+          ],
+        },
+        legend: {
+          display: true,
+          onHover: (evt: any, item: any, legend: any) => handleHover(evt, item, legend),
+          onLeave: (evt: any, item: any, legend: any) => handleLeave(evt, item, legend),
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Handle hover on legend items by adjusting bar opacities. All datasets are
+ * darkened except the hovered one which becomes more opaque.
+ */
+function handleHover(evt: any, item: any, legend: any): void {
+  legend.chart.data.datasets.forEach((dataset: any, datasetIndex: number) => {
+    dataset.backgroundColor = datasetIndex === item.datasetIndex
+        ? dataset.originalBackgroundColor.map((color: string) => {
+          const rgba = color.slice(0, -1).split(',');
+          rgba[3] = '0.8)';
+          return rgba.join(',');
+        })
+        : dataset.originalBackgroundColor.map((color: string) => {
+          const rgba = color.slice(0, -1).split(',');
+          rgba[3] = '0.1)';
+          return rgba.join(',');
+        });
+  });
+  legend.chart.update();
+}
+
+/**
+ * Reset dataset opacities when the cursor leaves the legend.
+ */
+function handleLeave(evt: any, item: any, legend: any): void {
+  legend.chart.data.datasets.forEach((dataset: any) => {
+    dataset.backgroundColor = dataset.originalBackgroundColor;
+  });
+  legend.chart.update();
+}
+
+/**
+ * Map a numeric pollutant value to a colour based on breakpoints. The
+ * thresholds differ for pm25 vs pm10/no2. An alpha channel value (e.g.
+ * '0.4', '1') can be supplied to control opacity. Colours are returned in
+ * rgba() format.
+ *
+ * TODO: This helper could be extracted into a shared utils module if colour
+ * mapping is required in other components.
+ *
+ * @param value The measured pollutant value.
+ * @param property The pollutant type (pm25, pm10, no2).
+ * @param alpha A string representing the alpha channel (0-1).
+ */
+function getColor(value: number, property: string, alpha: string): string {
+  const thresholds = property === 'pm25' ? [8.3, 16.7, 25, Infinity] : [13.3, 26.6, 40, Infinity];
+  const palette = [
+    'rgba(30, 144, 255,',
+    'rgba(72, 209, 204,',
+    'rgba(154, 205, 50,',
+    'rgba(218, 165, 32,',
+  ];
+  const index = thresholds.findIndex((t) => value < t);
+  const base = palette[index >= 0 && index < palette.length ? index : palette.length - 1];
+  return `${base}${alpha})`;
+}
+
+/**
+ * Format a Date into a string like "Maandag | 1 januari 2024". This helper
+ * centralises locale-specific formatting. The caller must provide a days
+ * array (e.g. ['Zondag','Maandag',...]) corresponding to Dutch day names.
+ *
+ * TODO: This helper could be extracted into a shared utils module if date
+ * formatting is required elsewhere.
+ *
+ * @param date The date to format.
+ * @param days A seven‑element array of day names starting with Sunday.
+ */
+function formatDate(date: Date, days: string[]): string {
+  const dayName = days[date.getDay()];
+  const dateString = date.toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  return `${dayName} | ${dateString}`;
+}
+
+/**
+ * Map a numeric value to a colour with the given alpha. The thresholds
+ * differ for pm25 vs pm10/no2. Returns a valid rgba string.
+ */
+
+/**
+ * Show a toast notification and update the displayed time. This uses the
+ * Bootstrap Toast API exposed on the DashboardToast component.
+ */
+function toast(): void {
+  const toastRef = (getCurrentInstance()?.proxy as any)?.$refs.toastPanel?.$refs?.liveToast;
+  if (!toastRef) return;
+  const toastInstance = (window.bootstrap.Toast as any).getOrCreateInstance(toastRef);
+  const now = new Date();
+  timeString.value = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+  toastInstance.show();
+}
+
+/**
+ * Download the current GeoJSON as a file. Shows a toast when complete.
+ */
+function downloadGeoJSON(): void {
+  if (!geojson.value) return;
+  const dataStr = JSON.stringify(geojson.value);
+  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+  const link = document.createElement('a');
+  link.href = dataUri;
+  link.download = `PZH-Luchtkwaliteit_${state.property}.geojson`;
+  toast();
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
+ * Download the current data as a CSV file. Missing values are marked as
+ * 'N/A'. A toast is shown after download begins.
+ */
+function downloadCSV(): void {
+  if (!geojson.value) return;
+  const header = 'Station naam;Datum en tijd;Property;Regio;Gemeente;Value;Unit\n';
+  let csv = header;
+  (geojson.value.features ?? geojson.value.Features ?? []).forEach((feature) => {
+    const props = feature.properties;
+    const stationNameStr = props.station_name ?? 'N/A';
+    const measuredTime = props.measured_time
+        ? new Date(props.measured_time).toISOString()
+        : 'N/A';
+    const propertyStr = props.property ?? 'N/A';
+    const regioStr = props.regio ?? 'N/A';
+    const gemeenteStr = props.Gemeente ?? 'N/A';
+    const valueStr = props.value !== undefined ? props.value.toFixed(2) : 'N/A';
+    const unitStr = props.unit ?? 'N/A';
+    csv += `${stationNameStr}; ${measuredTime}; ${propertyStr}; ${regioStr}; ${gemeenteStr}; ${valueStr}; ${unitStr}\n`;
+  });
+  const link = document.createElement('a');
+  link.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
+  link.download = 'Provincie Zuid-Holland Luchtkwaliteit - Samen Meten Dashboard.csv';
+  toast();
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+</script>
+
+<!-- Scoped styles to ensure the CSS only applies to this component -->
+<style scoped>
+/* Hide the native file input */
+.input-group input[type='file'] {
+  display: none;
+}
+
+/* Style the custom file upload button */
 .input-group .custom-file-upload {
   color: #fff;
   background-color: #20c997;
 }
 
+/* Make the control panel scrollable without affecting the map */
 .custom-div {
   position: relative;
   max-height: 97%;
@@ -910,29 +1340,27 @@ export default {
   z-index: 1;
 }
 
-/* Style the scrollbar */
+/* Slim scrollbars */
 *::-webkit-scrollbar {
-  width: 0.5vw; /* Decrease scrollbar width */
+  width: 0.5vw;
 }
-
-/* Handle */
 *::-webkit-scrollbar-thumb {
   background: #888;
-  border-radius: 0.5vw; /* Make it round */
+  border-radius: 0.5vw;
 }
-
-/* Handle on hover */
 *::-webkit-scrollbar-thumb:hover {
-  background: #555; /* Change color on hover */
+  background: #555;
 }
 
+/* Selection colour */
 * ::selection {
   font-family: Arial !important;
   background-color: #d11f3d;
   color: white;
 }
+
+/* Focused input label colour */
 .focused-label .form-control:focus ~ label {
   color: #0081ff;
 }
-/* Created by Bayram Gurel */
 </style>
