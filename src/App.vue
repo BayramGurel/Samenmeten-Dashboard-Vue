@@ -3,20 +3,20 @@
 </template>
 
 <script setup>
-// Import the main dashboard component
-// Make sure the path './AirQualityDashboard.vue' is correct relative to App.vue
-// import AirQualityDashboard from './components/AirQualityDashboard.vue';
 import AirQualityDashboard from './components/SamenMetenDashboard.vue';
-
-// Components imported in <script setup> are automatically available to the template
-// No 'components' registration needed.
 </script>
 
 <style>
-/* Global Styles - Apply to the entire application */
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
 
-/* 1. Import Bootstrap CSS (Essential for layout and components) */
-/* Make sure you have installed bootstrap: npm install bootstrap bootstrap-icons */
-@import 'bootstrap/dist/css/bootstrap.min.css';
-
+body {
+  min-width: 320px;
+  overflow: hidden;
+}
 </style>

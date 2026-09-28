@@ -1,12 +1,6 @@
 import { ref } from 'vue';
 import { createDropdownPopup, createDetailPopup } from '@/utils/popupHelper';
 
-/**
- * Manage MapLibre map initialization, layers, controls, and interactions.
- *
- * TODO: Consider accepting configuration objects per layer so this composable
- * can be reused for other dashboards without editing the source.
- */
 export function useMap({
   mapContainerId,
   apiKey,
@@ -21,11 +15,6 @@ export function useMap({
   const currentLayerId = ref(null);
   const rasterLayers = new Set();
 
-  /**
-   * Initialize the MapLibre map instance and attach base layers.
-   *
-   * @param {string} styleUrl
-   */
   function initializeMap(styleUrl) {
     map.value = new window.maplibregl.Map({
       container: mapContainerId,
@@ -40,13 +29,9 @@ export function useMap({
     });
   }
 
-  /**
-   * Add built-in and custom controls to the map.
-   *
-   * @param {() => void} onStyleChange
-   */
   function addControls(onStyleChange) {
     if (!map.value) return;
+
     addStyleSwitchControl(onStyleChange);
     map.value.addControl(new window.maplibregl.FullscreenControl());
     map.value.addControl(new window.maplibregl.NavigationControl());
@@ -61,6 +46,7 @@ export function useMap({
   function addLineSourceAndLayer() {
     const m = map.value;
     if (!m) return;
+
     if (!m.getSource('line')) {
       m.addSource('line', {
         type: 'geojson',
@@ -73,6 +59,7 @@ export function useMap({
         },
       });
     }
+
     if (!m.getLayer('line')) {
       m.addLayer({
         id: 'line',
@@ -93,17 +80,20 @@ export function useMap({
   }
 
   function addWindLayer() {
-    // TODO: Implement wind layer logic if required. Left blank for clarity.
+    // Reserved for a future optional wind layer.
   }
 
   function addStyleSwitchControl(onStyleChange) {
     if (!map.value) return;
+
     const styleSwitcherContainer = document.createElement('div');
     styleSwitcherContainer.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+
     const label = document.createElement('label');
     label.className = 'fw-semibold text-success';
     label.innerText = 'Selecteer achtergrond:';
     styleSwitcherContainer.appendChild(label);
+
     const styleSwitcher = document.createElement('select');
     styleSwitcher.className = 'form-select form-select-sm';
     styleSwitcher.style.fontSize = '1em';
@@ -120,23 +110,28 @@ export function useMap({
 
     styleSwitcher.onchange = (event) => {
       const target = event.target;
-      if (!target) return;
+      if (!target || !map.value) return;
+
       try {
-        map.value?.setStyle(target.value);
-        setTimeout(() => {
+        map.value.setStyle(target.value);
+        map.value.once('style.load', () => {
           addLineSourceAndLayer();
+          addWindLayer();
           onStyleChange?.();
-        }, 50);
+        });
       } catch (error) {
         console.error('An error occurred while switching styles:', error);
       }
     };
+
     styleSwitcherContainer.appendChild(styleSwitcher);
+
     const control = {
       onAdd: () => styleSwitcherContainer,
       onRemove: () => {},
       getDefaultPosition: () => 'top-right',
     };
+
     map.value.addControl(control);
   }
 
@@ -144,9 +139,9 @@ export function useMap({
     return [
       'case',
       ['==', ['get', 'property'], 'pm25'],
-      ['step', ['get', 'value'], '#1E90FF', 8.3, '#48D1CC', 16.7, '#9ACD32', 25, '#DAA520', Infinity, '#000000'],
+      ['step', ['get', 'value'], '#1E90FF', 8.3, '#48D1CC', 16.7, '#9ACD32', 25, '#DAA520'],
       ['in', ['get', 'property'], ['literal', ['no2', 'pm10']]],
-      ['step', ['get', 'value'], '#1E90FF', 13.3, '#48D1CC', 26.6, '#9ACD32', 40, '#DAA520', Infinity, '#000000'],
+      ['step', ['get', 'value'], '#1E90FF', 13.3, '#48D1CC', 26.6, '#9ACD32', 40, '#DAA520'],
       '#000000',
     ];
   }
@@ -154,17 +149,18 @@ export function useMap({
   function updateMapSourceAndLayer(geo) {
     const m = map.value;
     if (!m || !geo || (!geo.features && !geo.Features)) return;
+
     const features = geo.features ?? geo.Features;
     const normalized = {
       type: 'FeatureCollection',
-      features: features,
+      features,
     };
 
     if (!m.getSource('stations')) {
       m.addSource('stations', { type: 'geojson', data: normalized });
     } else {
       const source = m.getSource('stations');
-      if (source && source.setData) {
+      if (source?.setData) {
         source.setData(normalized);
       }
     }
@@ -177,6 +173,7 @@ export function useMap({
   function addStationsLayer() {
     const m = map.value;
     if (!m) return;
+
     m.addLayer({
       id: 'stations',
       type: 'circle',
@@ -188,13 +185,16 @@ export function useMap({
         'circle-stroke-width': 1.8,
       },
     });
+
     m.on('click', 'stations', handleStationClick);
   }
 
   function handleStationClick(event) {
     const m = map.value;
     if (!m) return;
+
     const features = m.queryRenderedFeatures(event.point, { layers: ['stations'] });
+
     if (features.length > 1) {
       createDropdownPopup({
         map: m,
@@ -220,17 +220,32 @@ export function useMap({
   async function idwInterpolation(dateStr, property) {
     const m = map.value;
     if (!m) return;
-    const bounds = [3.773675345120739, 51.64377788724585, 5.031415001585676, 52.3325109475691];
+
+    const bounds = [
+      3.773675345120739,
+      51.64377788724585,
+      5.031415001585676,
+      52.3325109475691,
+    ];
     const layerId = `interpolatie-${dateStr}-${property}`;
+
     rasterLayers.add(layerId);
     rasterLayers.forEach((id) => {
       if (m.getLayer(id)) {
         m.setPaintProperty(id, 'raster-opacity', id === layerId ? 1 : 0);
       }
     });
+
     currentLayerId.value = layerId;
+
     if (!m.getLayer(layerId)) {
-      const url = `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms?service=WMS&version=1.1.0&request=GetMap&layers=samenmeten%3A${property}_sqldb&bbox=${bounds.join(',')}&time=${dateStr}&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
+      const url =
+        `https://pzh-teamgeo-geoserver-app.azurewebsites.net/geoserver/samenmeten/wms` +
+        `?service=WMS&version=1.1.0&request=GetMap` +
+        `&layers=samenmeten%3A${property}_sqldb` +
+        `&bbox=${bounds.join(',')}&time=${dateStr}` +
+        `&width=768&height=420&srs=EPSG%3A4326&styles=&format=image/png&transparent=true`;
+
       m.addSource(layerId, {
         type: 'image',
         url,
@@ -241,13 +256,20 @@ export function useMap({
           [bounds[0], bounds[1]],
         ],
       });
-      m.addLayer({ id: layerId, type: 'raster', source: layerId, paint: { 'raster-opacity': 1 } });
+
+      m.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: layerId,
+        paint: { 'raster-opacity': 1 },
+      });
     }
   }
 
   function hideInterpolationLayer() {
     const m = map.value;
     if (!m || !currentLayerId.value) return;
+
     if (m.getLayer(currentLayerId.value)) {
       m.setPaintProperty(currentLayerId.value, 'raster-opacity', 0);
     }
